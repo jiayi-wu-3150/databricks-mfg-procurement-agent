@@ -1,0 +1,8 @@
+command:
+  - python
+  - app.py
+env:
+  - name: WORKSPACE_URL
+    value: "https://adb-984752964297111.11.azuredatabricks.net"
+  - name: SERVING_ENDPOINT
+    value: "jywu-pricing-model"

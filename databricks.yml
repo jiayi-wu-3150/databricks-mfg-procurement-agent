@@ -1,0 +1,90 @@
+bundle:
+  name: agent_openai_advanced
+
+resources:
+  apps:
+    agent_openai_advanced:
+      name: "mfg-procurement-agent"
+      description: "Manufacturing procurement agent — OpenAI Agents SDK with short-term
+        memory, EIA/pricing/AI-Search tools, deployed on Databricks Apps"
+      source_code_path: ./
+      config:
+        command: ["uv", "run", "start-app"]
+        env:
+          - name: MLFLOW_TRACKING_URI
+            value: "databricks"
+          - name: MLFLOW_REGISTRY_URI
+            value: "databricks-uc"
+          - name: API_PROXY
+            value: "http://localhost:8000/invocations"
+          - name: CHAT_APP_PORT
+            value: "3000"
+          - name: CHAT_PROXY_TIMEOUT_SECONDS
+            value: "300"
+          - name: MLFLOW_EXPERIMENT_ID
+            value_from: "experiment"
+          - name: LAKEBASE_AUTOSCALING_ENDPOINT
+            value_from: "postgres"
+          - name: LAKEBASE_AGENT_MEMORY_SCHEMA
+            value: "agent_openai_memory"
+          - name: LOG_LEVEL
+            value: "INFO"
+          # MLflow OpenTelemetry dual export: traces go to BOTH the Databricks
+          # experiment AND your OTLP backend. Uncomment the OTEL_* vars below and
+          # set the endpoint (+ headers) when you have a collector to point at.
+          # Setting the endpoint WITHOUT dual export would redirect traces away
+          # from Databricks, so keep this flag on.
+          - name: MLFLOW_TRACE_ENABLE_OTLP_DUAL_EXPORT
+            value: "true"
+          # - name: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+          #   value: "https://<your-otel-collector>/v1/traces"
+          # - name: OTEL_EXPORTER_OTLP_TRACES_PROTOCOL
+          #   value: "http/protobuf"
+          # - name: OTEL_EXPORTER_OTLP_TRACES_HEADERS
+          #   value: "api-key=<your-api-key>"
+          # Procurement agent runtime config (Azure: FM serving enabled → no gateway)
+          - name: USE_AI_GATEWAY
+            value: "false"
+          - name: AGENT_LLM_MODEL
+            value: "databricks-claude-sonnet-4-5"
+          - name: AI_SEARCH_INDEX
+            value: "jywu.jywu_mfg_agent.procurement_docs_index"
+          - name: MFG_CATALOG
+            value: "jywu"
+          - name: MFG_SCHEMA
+            value: "jywu_mfg_agent"
+          - name: MFG_WAREHOUSE_ID
+            value: "148ccb90800933a1"
+          # First try the public app MCP URLs directly (Azure app egress may be open, unlike
+          # the fevm serverless workspace). If dropped, register as UC MCP Services instead.
+          - name: MCP_PRICING_URL
+            value: "https://mcp-jywu-pricing-984752964297111.11.azure.databricksapps.com/mcp"
+          - name: MCP_EIA_URL
+            value: "https://mcp-jywu-eia-oil-984752964297111.11.azure.databricksapps.com/mcp"
+      # Resources which this app has access to
+      resources:
+        - name: 'experiment'
+          experiment:
+            experiment_id: "4490002415372478"
+            permission: 'CAN_MANAGE'
+        - name: 'postgres'
+          postgres:
+            branch: "projects/jywu-mfg-agent/branches/jywu-mfg-agent-branch"
+            database: "projects/jywu-mfg-agent/branches/jywu-mfg-agent-branch/databases/databricks-postgres"
+            permission: 'CAN_CONNECT_AND_CREATE'
+
+targets:
+  dev:
+    mode: development
+    default: true
+    # workspace:
+    #   host: https://...
+
+  prod:
+    mode: production
+    # workspace:
+    #   host: https://...
+    resources:
+      apps:
+        agent_openai_advanced:
+          name: mfg-procurement-agent

@@ -1,0 +1,392 @@
+<title>Procurement Agent Architecture</title>
+<style>
+  :root{
+    --paper:#f4f1ea; --surface:#fffdf7; --surface-2:#efe9dd;
+    --ink:#1b2026; --ink-soft:#5c6673; --line:#ddd6c8;
+    --accent:#c1521d; --accent-soft:#f1e0d4;
+    --steel:#2f6a90; --steel-soft:#dde8ef;
+    --good:#2f7a55; --warn:#a9791b; --crit:#b23a2b;
+    --shadow:0 1px 2px rgba(27,32,38,.06),0 8px 24px rgba(27,32,38,.07);
+    --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+    --sans:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+    --disp:"Archivo","IBM Plex Sans",system-ui,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --paper:#14181d; --surface:#1c222a; --surface-2:#232b34;
+    --ink:#eef1f4; --ink-soft:#9aa5b1; --line:#2c343d;
+    --accent:#e3813f; --accent-soft:#3a2a20;
+    --steel:#6fa9cf; --steel-soft:#1f2c36;
+    --good:#4fae7f; --warn:#d0a24a; --crit:#e0705c;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
+    color-scheme:dark;
+  }}
+  :root[data-theme="dark"]{
+    --paper:#14181d; --surface:#1c222a; --surface-2:#232b34;
+    --ink:#eef1f4; --ink-soft:#9aa5b1; --line:#2c343d;
+    --accent:#e3813f; --accent-soft:#3a2a20;
+    --steel:#6fa9cf; --steel-soft:#1f2c36;
+    --good:#4fae7f; --warn:#d0a24a; --crit:#e0705c;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);
+    font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+  #app{display:flex;flex-direction:column;height:100%}
+  .progress{height:3px;background:var(--line);flex:0 0 auto}
+  .progress > i{display:block;height:100%;background:var(--accent);width:10%;
+    transition:width .35s cubic-bezier(.4,0,.2,1)}
+  @media (prefers-reduced-motion:reduce){.progress>i{transition:none}}
+  .deck{flex:1 1 auto;overflow-y:auto;overflow-x:hidden}
+  .slide{min-height:100%;display:flex;flex-direction:column;justify-content:center;
+    padding-block:clamp(28px,6vh,72px)}
+  .wrap{width:100%;max-width:960px;margin:0 auto;padding:0 20px}
+  .eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--accent);margin:0 0 14px}
+  h1{font-family:var(--disp);font-weight:800;font-size:clamp(30px,6vw,54px);
+    line-height:1.02;letter-spacing:-.01em;margin:0;text-wrap:balance}
+  h2{font-family:var(--disp);font-weight:700;font-size:clamp(23px,3.6vw,34px);
+    line-height:1.08;letter-spacing:-.01em;margin:0 0 6px;text-wrap:balance}
+  .lede{font-size:clamp(15px,1.9vw,18px);color:var(--ink-soft);max-width:64ch;margin:14px 0 0}
+  p{margin:.6em 0}
+  .muted{color:var(--ink-soft)}
+  .mono{font-family:var(--mono)}
+  code{font-family:var(--mono);font-size:.88em;background:var(--surface-2);
+    padding:1px 5px;border-radius:5px;border:1px solid var(--line);white-space:nowrap}
+  .kicker{font-family:var(--mono);font-size:12px;color:var(--ink-soft);
+    letter-spacing:.04em;margin-bottom:18px}
+  /* chips */
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:22px}
+  .chip{font-family:var(--mono);font-size:12px;padding:5px 11px;border-radius:999px;
+    border:1px solid var(--line);background:var(--surface);color:var(--ink-soft)}
+  .chip.on{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+  /* cards */
+  .grid{display:grid;gap:14px;margin-top:22px}
+  .g2{grid-template-columns:repeat(2,1fr)}
+  .g4{grid-template-columns:repeat(2,1fr)}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;
+    padding:16px 16px;box-shadow:var(--shadow)}
+  .card h3{font-family:var(--disp);font-weight:700;font-size:16px;margin:0 0 4px;
+    display:flex;align-items:center;gap:9px}
+  .card .n{font-family:var(--mono);font-size:12px;color:var(--paper);background:var(--accent);
+    width:22px;height:22px;border-radius:6px;display:grid;place-items:center;flex:0 0 auto}
+  .card p{margin:.35em 0;font-size:13.5px}
+  .tag{display:inline-block;font-family:var(--mono);font-size:11px;color:var(--steel);
+    background:var(--steel-soft);border-radius:5px;padding:2px 7px;margin-top:8px}
+  /* table */
+  .twrap{overflow-x:auto;margin-top:18px;border:1px solid var(--line);border-radius:12px}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;background:var(--surface)}
+  th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.08em;
+    color:var(--ink-soft);background:var(--surface-2)}
+  tr:last-child td{border-bottom:none}
+  td.num{font-variant-numeric:tabular-nums;text-align:right;color:var(--accent);font-family:var(--mono)}
+  /* architecture diagram */
+  .diagram{margin-top:20px;display:flex;flex-direction:column;gap:0}
+  .layer{display:flex;flex-direction:column;align-items:center}
+  .conn{width:2px;height:16px;background:var(--line)}
+  .box{background:var(--surface);border:1px solid var(--line);border-radius:10px;
+    padding:11px 15px;box-shadow:var(--shadow);text-align:center;max-width:100%}
+  .box .t{font-family:var(--disp);font-weight:700;font-size:14px}
+  .box .s{font-family:var(--mono);font-size:11px;color:var(--ink-soft);margin-top:2px}
+  .box.hero{border-color:var(--accent);border-width:1.5px}
+  .box.llm{border-color:var(--steel)}
+  .row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;width:100%}
+  .tool{flex:1 1 180px;min-width:150px;background:var(--surface);border:1px solid var(--line);
+    border-radius:10px;padding:10px 12px;box-shadow:var(--shadow)}
+  .tool .t{font-weight:600;font-size:13px}
+  .tool .s{font-family:var(--mono);font-size:10.5px;color:var(--ink-soft);margin-top:3px;white-space:normal}
+  .tool .b{font-family:var(--mono);font-size:10.5px;color:var(--steel);margin-top:6px;
+    padding-top:6px;border-top:1px dashed var(--line);white-space:normal}
+  /* recommendation demo */
+  .verdict{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-top:20px}
+  .verdict .big{font-family:var(--disp);font-weight:800;font-size:clamp(26px,5vw,40px);color:var(--crit)}
+  .signals{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:18px}
+  .signal{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);
+    border-radius:8px;padding:11px 13px}
+  .signal .l{font-family:var(--mono);font-size:11px;color:var(--ink-soft);letter-spacing:.04em}
+  .signal .v{font-weight:600;font-size:14px;margin-top:3px}
+  .signal.warn{border-left-color:var(--warn)} .signal.crit{border-left-color:var(--crit)}
+  .signal.ok{border-left-color:var(--good)} .signal.steel{border-left-color:var(--steel)}
+  ul.clean{margin:16px 0 0;padding:0;list-style:none;display:grid;gap:10px}
+  ul.clean li{display:flex;gap:11px;font-size:14.5px}
+  ul.clean li::before{content:"";flex:0 0 auto;width:7px;height:7px;border-radius:2px;
+    background:var(--accent);margin-top:8px}
+  /* nav */
+  .nav{flex:0 0 auto;display:flex;align-items:center;gap:14px;
+    padding:10px 18px;padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));
+    border-top:1px solid var(--line);background:var(--surface)}
+  .nav .title{font-family:var(--mono);font-size:12px;color:var(--ink-soft);
+    flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .btn{font-family:var(--sans);font-size:14px;font-weight:600;cursor:pointer;
+    background:var(--surface-2);color:var(--ink);border:1px solid var(--line);
+    border-radius:8px;width:38px;height:34px;display:grid;place-items:center}
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
+  .btn:disabled{opacity:.4;cursor:default}
+  .btn:focus-visible,.dot:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .count{font-family:var(--mono);font-size:12px;color:var(--ink-soft);
+    font-variant-numeric:tabular-nums;min-width:44px;text-align:center}
+  .dots{display:flex;gap:6px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--line);border:none;
+    padding:0;cursor:pointer}
+  .dot.on{background:var(--accent);transform:scale(1.25)}
+  @media (max-width:560px){.g2,.g4,.signals{grid-template-columns:1fr}
+    .dots{display:none}}
+</style>
+
+<div id="app">
+  <div class="progress"><i id="bar"></i></div>
+  <main class="deck" id="deck">
+
+    <!-- 1 -->
+    <section class="slide" data-title="Title">
+      <div class="wrap">
+        <p class="eyebrow">Databricks Apps · Agent architecture</p>
+        <h1>Manufacturing<br>Procurement Agent</h1>
+        <p class="lede">An AI advisor for a plastics manufacturer buying polyethylene resins —
+          it decides <strong>buy or wait, how much, and from which supplier</strong> by combining
+          internal data, live oil-market signals, an ML deal-quality model, and company policy.</p>
+        <div class="chips">
+          <span class="chip on">OpenAI Agents SDK</span>
+          <span class="chip on">MLflow agent_server</span>
+          <span class="chip">claude-sonnet-4-5</span>
+          <span class="chip">4 tools · 3 MCP servers</span>
+          <span class="chip">Lakebase memory</span>
+        </div>
+        <p class="mono muted" style="margin-top:26px;font-size:12px">
+          jywu.jywu_mfg_agent · adb-984752964297111 (Azure)</p>
+      </div>
+    </section>
+
+    <!-- 2 -->
+    <section class="slide" data-title="The decision" hidden>
+      <div class="wrap">
+        <p class="eyebrow">The job</p>
+        <h2>One question, four kinds of evidence</h2>
+        <p class="lede">A procurement lead gets a supplier quote and has minutes to judge it.
+          The agent answers the real question they'd ask a team of analysts:</p>
+        <div class="card" style="margin-top:20px;border-left:3px solid var(--accent)">
+          <p style="font-family:var(--disp);font-weight:700;font-size:clamp(17px,2.6vw,22px);margin:0">
+            “Should I buy 200 tons of HDPE at $1,300/ton right now?”</p>
+        </div>
+        <div class="grid g4">
+          <div class="card"><h3>Do we need it?</h3><p class="muted">On-hand inventory, safety stock, days of supply, upcoming demand.</p></div>
+          <div class="card"><h3>Is the timing right?</h3><p class="muted">Crude-oil price and trend — resin tracks oil with a lag.</p></div>
+          <div class="card"><h3>Is it a good price?</h3><p class="muted">An ML model scores the deal against past outcomes.</p></div>
+          <div class="card"><h3>Is it allowed?</h3><p class="muted">Approval thresholds, preferred suppliers, contract terms.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3 -->
+    <section class="slide" data-title="Architecture" hidden>
+      <div class="wrap">
+        <p class="eyebrow">At a glance</p>
+        <h2>How a question flows through the system</h2>
+        <div class="diagram">
+          <div class="layer">
+            <div class="box"><div class="t">Procurement lead</div><div class="s">chat UI</div></div>
+            <div class="conn"></div>
+          </div>
+          <div class="layer">
+            <div class="box hero"><div class="t">Databricks App — mfg-procurement-agent</div>
+              <div class="s">React chat UI + MLflow agent_server · OpenAI Agents SDK Runner</div></div>
+            <div class="conn"></div>
+          </div>
+          <div class="layer">
+            <div class="box llm"><div class="t">LLM · databricks-claude-sonnet-4-5</div>
+              <div class="s">plans &amp; calls tools (direct Foundation Model serving)</div></div>
+            <div class="conn"></div>
+          </div>
+          <div class="layer">
+            <div class="row">
+              <div class="tool"><div class="t">get_material_status</div><div class="s">function tool</div><div class="b">→ SQL Warehouse → UC tables</div></div>
+              <div class="tool"><div class="t">EIA oil MCP</div><div class="s">custom app</div><div class="b">→ api.eia.gov</div></div>
+              <div class="tool"><div class="t">Pricing MCP</div><div class="s">custom app</div><div class="b">→ Model Serving endpoint</div></div>
+              <div class="tool"><div class="t">AI Search playbook</div><div class="s">managed MCP</div><div class="b">→ Vector Search index</div></div>
+            </div>
+            <div class="conn"></div>
+          </div>
+          <div class="layer">
+            <div class="row">
+              <div class="box"><div class="t">Lakebase</div><div class="s">session memory</div></div>
+              <div class="box"><div class="t">MLflow</div><div class="s">tracing &amp; eval</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4 -->
+    <section class="slide" data-title="The agent" hidden>
+      <div class="wrap">
+        <p class="eyebrow">The agent</p>
+        <h2>A thin, resilient orchestrator</h2>
+        <div class="grid g2">
+          <div class="card"><h3>Framework</h3><p class="muted">OpenAI Agents SDK <code>Runner</code> inside MLflow <code>agent_server</code> (<code>@invoke</code>/<code>@stream</code>), served on Databricks Apps.</p></div>
+          <div class="card"><h3>LLM</h3><p class="muted"><code>databricks-claude-sonnet-4-5</code> via direct FM serving. An env flag switches to the AI Gateway on workspaces where the FM path is disabled.</p></div>
+          <div class="card"><h3>Instructions</h3><p class="muted">A procurement-advisor prompt that folds in three skills: oil-market-analyst, procurement-advisor, inventory-monitor.</p></div>
+          <div class="card"><h3>Resilience</h3><p class="muted">Each MCP server is health-checked per request; an unavailable tool is dropped so one down server can't crash a turn.</p></div>
+        </div>
+        <p class="kicker" style="margin-top:20px">agent_server/agent.py</p>
+      </div>
+    </section>
+
+    <!-- 5 -->
+    <section class="slide" data-title="Four tools" hidden>
+      <div class="wrap">
+        <p class="eyebrow">Tools</p>
+        <h2>Four sources, one recommendation</h2>
+        <div class="grid g4">
+          <div class="card"><h3><span class="n">1</span>Internal data</h3>
+            <p class="muted"><code>get_material_status</code> — parameterized SQL over inventory, quotes and demand; returns stock (with reorder warnings), cheapest current quote, near-term demand.</p>
+            <span class="tag">@function_tool · SQL Warehouse</span></div>
+          <div class="card"><h3><span class="n">2</span>Oil market</h3>
+            <p class="muted">Current WTI/Brent spot price, history and trend from the U.S. EIA API. Key drives buy timing.</p>
+            <span class="tag">FastMCP app · secret-backed key</span></div>
+          <div class="card"><h3><span class="n">3</span>Deal quality</h3>
+            <p class="muted"><code>predict_deal_quality</code> — a GradientBoosting model trained on purchase history, served scale-to-zero.</p>
+            <span class="tag">FastMCP app · Model Serving</span></div>
+          <div class="card"><h3><span class="n">4</span>Procurement Playbook</h3>
+            <p class="muted">Policy &amp; contract rules — approval thresholds, preferred suppliers, MOQ/price-lock — via vector search.</p>
+            <span class="tag">Managed MCP · Vector Search</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6 -->
+    <section class="slide" data-title="Data layer" hidden>
+      <div class="wrap">
+        <p class="eyebrow">Data layer · jywu.jywu_mfg_agent</p>
+        <h2>Small, realistic, labeled</h2>
+        <div class="twrap">
+          <table>
+            <thead><tr><th>Table</th><th>Rows</th><th>Purpose</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">supplier_quotes</td><td class="num">36</td><td>vendor pricing, lead times, MOQ, validity</td></tr>
+              <tr><td class="mono">inventory_levels</td><td class="num">6</td><td>stock, safety stock, days of supply, reorder point</td></tr>
+              <tr><td class="mono">production_demand</td><td class="num">9</td><td>upcoming material requirements by month</td></tr>
+              <tr><td class="mono">purchase_history</td><td class="num">24</td><td>past decisions with outcome labels — ML training data</td></tr>
+              <tr><td class="mono">procurement_docs</td><td class="num">8</td><td>Procurement Playbook — source for the Vector Search index</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="lede">Materials HDPE · LDPE · PP &nbsp;·&nbsp; suppliers ChemCorp · PolySource · AsiaResin · EuroChem &nbsp;·&nbsp; warehouses Houston · Chicago.</p>
+      </div>
+    </section>
+
+    <!-- 7 -->
+    <section class="slide" data-title="Memory & tracing" hidden>
+      <div class="wrap">
+        <p class="eyebrow">Memory &amp; observability</p>
+        <h2>Context that persists, behavior you can inspect</h2>
+        <div class="grid g2">
+          <div class="card"><h3>Short-term memory</h3><p class="muted"><code>AsyncDatabricksSession</code> → Lakebase autoscaling Postgres, scoped by <code>session_id</code>, so multi-turn conversations keep context.</p></div>
+          <div class="card"><h3>Tracing &amp; eval</h3><p class="muted">Every turn is traced to an MLflow experiment. Optional OpenTelemetry dual-export ships traces to an external backend without losing Databricks tracing.</p></div>
+          <div class="card"><h3>Separate experiments</h3><p class="muted">The agent's tracing experiment is kept distinct from the ML model's training experiment — different concerns.</p></div>
+          <div class="card"><h3>Governed by Unity Catalog</h3><p class="muted">Tables, the model, and the vector index are all UC securables with grants to the app's service principal.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 8 -->
+    <section class="slide" data-title="Deploy & security" hidden>
+      <div class="wrap">
+        <p class="eyebrow">Deployment &amp; security</p>
+        <h2>Bundles, apps, and least-privilege</h2>
+        <ul class="clean">
+          <li><strong>Agent app</strong> ships as a Databricks Asset Bundle; runtime config (model, catalog, warehouse, MCP URLs, Lakebase) lives in the bundle's <code>config.env</code>.</li>
+          <li><strong>MCP servers</strong> deploy as separate Databricks Apps (<code>apps create</code> → <code>sync</code> → <code>apps deploy</code>).</li>
+          <li><strong>Auth:</strong> the agent's service principal gets <code>CAN_USE</code> on the MCP apps &amp; warehouse, <code>SELECT</code> on the schema, and Lakebase privileges; the pricing app's SP gets <code>CAN_QUERY</code> on the endpoint.</li>
+          <li><strong>Secrets:</strong> the EIA API key is injected from a Databricks secret via <code>valueFrom</code> — never hardcoded.</li>
+          <li><strong>Egress:</strong> where app-to-app egress is restricted, register the MCP apps as UC MCP Services and reach them over the internal path.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 9 -->
+    <section class="slide" data-title="Lessons" hidden>
+      <div class="wrap">
+        <p class="eyebrow">Design decisions &amp; lessons</p>
+        <h2>What shaped the build</h2>
+        <div class="twrap">
+          <table>
+            <thead><tr><th>Decision</th><th>Why</th></tr></thead>
+            <tbody>
+              <tr><td>Custom tools as <strong>MCP servers on Apps</strong></td><td>Reusable across agents; lower latency than UC-function tools.</td></tr>
+              <tr><td><strong>Lean model requirements</strong></td><td>Inferred deps pulled the whole venv (PySpark, 150+ pkgs) into the serving image — huge, slow build. An explicit 5-package list builds fast anywhere.</td></tr>
+              <tr><td>Direct FM serving, gateway by flag</td><td>Works where the FM path is enabled; one env flag adapts to workspaces where it isn't.</td></tr>
+              <tr><td>Managed MCP for retrieval</td><td>Endorsed, internal path — no egress concerns for vector search.</td></tr>
+              <tr><td>No <code>uv.lock</code> in the deploy</td><td>Build's uv version differed from local, tripping <code>--locked</code>; let the build resolve from <code>pyproject</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 10 -->
+    <section class="slide" data-title="Live example" hidden>
+      <div class="wrap">
+        <p class="eyebrow">End to end · live on the deployed agent</p>
+        <h2>“Buy 200t HDPE at $1,300/ton?”</h2>
+        <div class="verdict"><span class="big">WAIT — don't buy</span>
+          <span class="muted">all four tools fired</span></div>
+        <div class="signals">
+          <div class="signal ok"><div class="l">INVENTORY · get_material_status</div><div class="v">530t on hand — above reorder; no urgency</div></div>
+          <div class="signal crit"><div class="l">PRICING · ML model</div><div class="v">Bad Deal — $83/ton over AsiaResin's $1,217</div></div>
+          <div class="signal warn"><div class="l">OIL · EIA MCP</div><div class="v">WTI $96.41, up 13.7% in 30 days — rising</div></div>
+          <div class="signal steel"><div class="l">POLICY · AI Search</div><div class="v">$260k needs VP sign-off; ChemCorp preferred</div></div>
+        </div>
+        <p class="lede">The recommendation is grounded in specific numbers from each source — inventory, market, model, and policy — not a generic answer.</p>
+      </div>
+    </section>
+
+  </main>
+  <nav class="nav">
+    <button class="btn" id="prev" aria-label="Previous slide">‹</button>
+    <span class="count" id="count">1 / 10</span>
+    <button class="btn" id="next" aria-label="Next slide">›</button>
+    <span class="title" id="stitle">Title</span>
+    <div class="dots" id="dots" role="tablist" aria-label="Slides"></div>
+  </nav>
+</div>
+
+<script>
+(function(){
+  var slides=[].slice.call(document.querySelectorAll('.slide'));
+  var total=slides.length, i=0;
+  var bar=document.getElementById('bar'), count=document.getElementById('count'),
+      stitle=document.getElementById('stitle'), prev=document.getElementById('prev'),
+      next=document.getElementById('next'), dots=document.getElementById('dots'),
+      deck=document.getElementById('deck');
+  slides.forEach(function(s,n){
+    var d=document.createElement('button');
+    d.className='dot'; d.setAttribute('role','tab');
+    d.setAttribute('aria-label','Slide '+(n+1)); d.addEventListener('click',function(){go(n)});
+    dots.appendChild(d);
+  });
+  var dotEls=[].slice.call(dots.children);
+  function render(){
+    slides.forEach(function(s,n){s.hidden = n!==i;});
+    dotEls.forEach(function(d,n){d.classList.toggle('on',n===i);});
+    bar.style.width=((i+1)/total*100)+'%';
+    count.textContent=(i+1)+' / '+total;
+    stitle.textContent=slides[i].getAttribute('data-title')||'';
+    prev.disabled=i===0; next.disabled=i===total-1;
+    deck.scrollTop=0;
+    try{history.replaceState(null,'','#s'+(i+1));}catch(e){}
+  }
+  function go(n){ i=Math.max(0,Math.min(total-1,n)); render(); }
+  next.addEventListener('click',function(){go(i+1)});
+  prev.addEventListener('click',function(){go(i-1)});
+  document.addEventListener('keydown',function(e){
+    if(e.key==='ArrowRight'||e.key==='PageDown'){go(i+1);}
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'){go(i-1);}
+    else if(e.key==='Home'){go(0);} else if(e.key==='End'){go(total-1);}
+  });
+  var m=(location.hash||'').match(/^#s(\d+)$/);
+  if(m){var n=parseInt(m[1],10)-1; if(n>=0&&n<total) i=n;}
+  render();
+})();
+</script>

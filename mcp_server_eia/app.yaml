@@ -1,0 +1,8 @@
+command:
+  - python
+  - app.py
+env:
+  # Injected from a Databricks secret (never hardcode the key). The app must be
+  # granted a secret resource keyed 'eia-api-key' → scope 'mfg-agent', key 'eia-api-key'.
+  - name: EIA_API_KEY
+    valueFrom: "eia-api-key"

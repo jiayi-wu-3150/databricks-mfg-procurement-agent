@@ -1,0 +1,37 @@
+command: ["uv", "run", "start-app"]
+# databricks apps listen by default on port 8000
+
+env:
+  - name: MLFLOW_TRACKING_URI
+    value: "databricks"
+  - name: MLFLOW_REGISTRY_URI
+    value: "databricks-uc"
+  - name: API_PROXY
+    value: "http://localhost:8000/invocations"
+  - name: CHAT_APP_PORT
+    value: "3000"
+  - name: CHAT_PROXY_TIMEOUT_SECONDS
+    value: "300"
+  - name: MLFLOW_EXPERIMENT_ID
+    value: "4490002415372478"
+  - name: LAKEBASE_AUTOSCALING_ENDPOINT
+    value: "projects/jywu-mfg-agent/branches/jywu-mfg-agent-branch/endpoints/primary"
+  - name: LAKEBASE_AGENT_MEMORY_SCHEMA
+    value: "agent_openai_memory"
+  # Procurement agent runtime config (Azure: FM serving enabled -> no gateway)
+  - name: USE_AI_GATEWAY
+    value: "false"
+  - name: AGENT_LLM_MODEL
+    value: "databricks-claude-sonnet-4-5"
+  - name: AI_SEARCH_INDEX
+    value: "jywu.jywu_mfg_agent.procurement_docs_index"
+  - name: MFG_CATALOG
+    value: "jywu"
+  - name: MFG_SCHEMA
+    value: "jywu_mfg_agent"
+  - name: MFG_WAREHOUSE_ID
+    value: "148ccb90800933a1"
+  - name: MCP_PRICING_URL
+    value: "https://mcp-jywu-pricing-984752964297111.11.azure.databricksapps.com/mcp"
+  - name: MCP_EIA_URL
+    value: "https://mcp-jywu-eia-oil-984752964297111.11.azure.databricksapps.com/mcp"
