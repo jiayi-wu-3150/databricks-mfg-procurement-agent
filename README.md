@@ -1,4 +1,29 @@
-# Advanced Responses API Agent
+# Manufacturing Procurement Agent
+
+An AI procurement advisor on **Databricks Apps** for a plastics manufacturer buying
+polyethylene resins (HDPE, LDPE, PP). It decides **buy or wait, how much, and from which
+supplier** by combining internal data, live oil-market signals, an ML deal-quality model,
+and company policy — each exposed as a tool the LLM orchestrates.
+
+- **📊 Architecture deck (rendered):** https://raw.githack.com/jiayi-wu-3150/databricks-mfg-procurement-agent/main/architecture-deck.html
+- **📄 Architecture doc:** [architecture.md](architecture.md)
+- **▶️ Live app:** https://mfg-procurement-agent-984752964297111.11.azure.databricksapps.com
+
+### The four tools
+| # | Tool | How it works |
+|---|------|--------------|
+| 1 | `get_material_status` — inventory, cheapest quote, demand | `@function_tool` → SQL Warehouse |
+| 2 | Oil prices — WTI/Brent spot, history, trend | FastMCP app (`mcp_server_eia`) → EIA API |
+| 3 | `predict_deal_quality` — good/bad deal | FastMCP app (`mcp_server_pricing`) → Model Serving |
+| 4 | Procurement Playbook — approval/policy rules | Managed MCP → Vector Search index |
+
+**Stack:** OpenAI Agents SDK + MLflow `agent_server` · `databricks-claude-sonnet-4-5` (direct FM serving) ·
+Lakebase session memory · MLflow tracing · Unity Catalog `jywu.jywu_mfg_agent`.
+Setup scripts are in [`setup/`](setup); deploy with `databricks bundle deploy && databricks bundle run agent_openai_advanced`.
+
+---
+
+## Template reference — Advanced Responses API Agent
 
 This template defines a **stateful** conversational agent app with persistent conversation history, long-running background execution, and stream resumption — all backed by [Databricks Lakebase](https://docs.databricks.com/aws/en/lakebase/). The app comes with a built-in chat UI, but also exposes an API endpoint for invoking the agent so that you can serve your UI elsewhere (e.g. on your website or in a mobile app).
 
