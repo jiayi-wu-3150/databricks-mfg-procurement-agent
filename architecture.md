@@ -124,9 +124,34 @@ Materials: HDPE, LDPE, PP · Suppliers: ChemCorp, PolySource, AsiaResin, EuroChe
 - **Auth model:** the agent app's **service principal** is granted: `CAN_USE` on both MCP apps,
   `CAN_USE` on the SQL warehouse, `USE CATALOG`/`USE SCHEMA`/`SELECT` on the schema, and Lakebase
   Postgres privileges. The pricing MCP's SP is granted `CAN_QUERY` on the serving endpoint.
-- **Egress note:** on this Azure workspace, app-to-app egress is open, so the agent reaches the
-  MCP apps directly via their URLs. On networks where egress is restricted, register the MCP apps
-  as **UC MCP Services** (UC HTTP connection, OAUTH_M2M) and consume them over the internal path.
+### 6.1 How the agent reaches the custom MCP servers — and when a UC connection is needed
+
+A custom MCP server is a Databricks App with a public URL (`https://<app>.databricksapps.com/mcp`).
+There are two ways for a caller to reach it, and which one you need depends on the caller and the
+network:
+
+**Direct by URL (what this deployment uses).** The agent's `McpServer(url=...)` calls the app's
+public URL over OAuth. This works here because **this Azure workspace's app-to-app egress is open**,
+so the deployed agent can reach `*.databricksapps.com` directly. Nothing extra to register.
+
+**Via a UC connection + UC MCP Service (needed in these cases):** register the MCP app in Unity
+Catalog as an **HTTP connection** (`is_mcp_connection`, `credential_type=OAUTH_M2M`) so callers reach
+it over the **internal managed-MCP path** instead of the public URL. Register it when:
+
+| Situation | Why the UC connection is required |
+|---|---|
+| **Restricted app egress** (NCC/Private Link, or workspaces that block outbound to `*.databricksapps.com`) | The deployed agent can't reach the public URL — you hit `serverless network policy` / connection-refused. The internal managed-MCP path is fetched by the control plane, which isn't subject to the app's egress block. (This was the blocker on the earlier fevm workspace.) |
+| **Supervisor Agent / Agent Bricks** as the caller | These consume tools as **UC MCP Services** (governed securables), not raw app URLs. A custom-code agent (our OpenAI Agents SDK app) can call a URL directly; SA/Agent Bricks cannot. |
+| **UC governance** over the tool | You want the MCP server managed as a UC securable — grants, ownership, auditing — like any other catalog object. |
+
+**Auth for the connection:** Databricks does **not** support Dynamic Client Registration for
+custom MCP servers, so use **static M2M OAuth** — a service principal's `client_id` + secret with
+`CAN_USE` on the app, wired into the connection as `client_credentials` against the workspace
+`/oidc/v1/token` endpoint. (PATs are not accepted for custom MCPs on Apps.)
+
+> **Note:** the **AI Search Playbook** tool always uses the internal managed-MCP path
+> (`/api/2.0/mcp/ai-search/...`) — that's a built-in managed MCP and needs no connection. The
+> "UC connection" question only concerns the two **custom** app-hosted MCP servers (EIA, pricing).
 
 ---
 
