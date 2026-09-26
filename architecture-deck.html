@@ -46,6 +46,7 @@
   .deck{flex:1 1 auto;overflow-y:auto;overflow-x:hidden}
   .slide{min-height:100%;display:flex;flex-direction:column;justify-content:center;
     padding-block:clamp(28px,6vh,72px)}
+  .slide[hidden]{display:none}  /* beats .slide{display:flex}; standalone has no [hidden]!important reset */
   .wrap{width:100%;max-width:960px;margin:0 auto;padding:0 20px}
   .eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.16em;
     text-transform:uppercase;color:var(--accent);margin:0 0 14px}
