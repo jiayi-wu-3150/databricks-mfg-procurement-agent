@@ -57,10 +57,12 @@ resources:
             value: "148ccb90800933a1"
           # First try the public app MCP URLs directly (Azure app egress may be open, unlike
           # the fevm serverless workspace). If dropped, register as UC MCP Services instead.
+          # Governed UC MCP Services (schema-scoped, internal AI-Gateway path). The legacy
+          # public app URLs still work; these are the recommended, UC-governed home.
           - name: MCP_PRICING_URL
-            value: "https://mcp-jywu-pricing-984752964297111.11.azure.databricksapps.com/mcp"
+            value: "https://adb-984752964297111.11.azuredatabricks.net/ai-gateway/mcp-services/jywu.jywu_mfg_agent.pricing"
           - name: MCP_EIA_URL
-            value: "https://mcp-jywu-eia-oil-984752964297111.11.azure.databricksapps.com/mcp"
+            value: "https://adb-984752964297111.11.azuredatabricks.net/ai-gateway/mcp-services/jywu.jywu_mfg_agent.eia_oil"
       # Resources which this app has access to
       resources:
         - name: 'experiment'
