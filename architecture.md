@@ -7,8 +7,7 @@ ML deal-quality model, and company policy — all as tools the LLM orchestrates.
 
 - **Workspace:** `adb-984752964297111.11.azuredatabricks.net` (Azure) · profile `azure-demo`
 - **Unity Catalog:** `jywu.jywu_mfg_agent`
-- **Live app:** https://mfg-procurement-agent-984752964297111.11.azure.databricksapps.com
-- **Framework:** OpenAI Agents SDK + MLflow `agent_server`, deployed on **Databricks Apps**
+- **Framework:** OpenAI Agents SDK + MLflow `agent_server`, deployed on **Databricks Apps** (access is workspace-internal)
 
 ---
 

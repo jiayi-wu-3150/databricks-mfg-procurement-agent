@@ -7,7 +7,6 @@ and company policy — each exposed as a tool the LLM orchestrates.
 
 - **📊 Architecture deck (rendered):** https://raw.githack.com/jiayi-wu-3150/databricks-mfg-procurement-agent/main/architecture-deck.html
 - **📄 Architecture doc:** [architecture.md](architecture.md)
-- **▶️ Live app:** https://mfg-procurement-agent-984752964297111.11.azure.databricksapps.com
 
 ### The four tools
 | # | Tool | How it works |
