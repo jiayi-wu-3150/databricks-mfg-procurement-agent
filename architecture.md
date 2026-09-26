@@ -56,18 +56,25 @@ ML deal-quality model, and company policy — all as tools the LLM orchestrates.
 
 ## 3. The four tools
 
-### 3.1 `get_material_status(material)` — internal data (function tool)
-- A `@function_tool` (`agent_server/procurement_tools.py`) that runs a few small parameterized
-  SQL queries against the UC tables via the **SQL Warehouse** and returns a concise summary:
-  on-hand inventory per warehouse (with safety stock, days of supply, reorder-point warnings),
-  the cheapest current supplier quote, and near-term production demand.
-- Deterministic, low-latency, easy to explain. (Replaced the original Genie space to keep the demo lean.)
+### 3.1 `get_material_status(material)` — internal data (UC function via UC Functions MCP)
+- A **UC SQL function** `jywu.jywu_mfg_agent.get_material_status(material)` that queries the UC
+  tables (inventory / quotes / demand) and returns a concise summary: on-hand inventory,
+  cheapest recent supplier quote, and next-month demand.
+- Exposed to the agent through the **managed UC Functions MCP** (`/api/2.0/mcp/functions/jywu/jywu_mfg_agent`)
+  — so it's UC-governed (EXECUTE grants) and shows under the schema's **Functions** tab. (Replaced the
+  original Genie space *and* the earlier in-process `@function_tool` to make it governed.)
+- **Gotcha:** reference the parameter **function-qualified** (`get_material_status.material`) with
+  table aliases inside the subqueries. A bare param name works via a direct `SELECT` but fails under
+  the MCP's named-arg invocation with `UNRESOLVED_COLUMN`.
 
 ### 3.2 EIA oil-price MCP — `mcp-jywu-eia-oil` (custom Databricks App)
 - A **FastMCP** server hosted as its own Databricks App. Tools: `get_current_oil_price`,
   `get_oil_price_history`, `get_oil_price_trend`. Wraps the U.S. EIA API (WTI/Brent spot prices).
 - **Auth:** `EIA_API_KEY` injected from a Databricks **secret** (`mfg-agent/eia-api-key`) via
   `app.yaml` `valueFrom` — never hardcoded.
+- **Governed & reached** as a schema-scoped **UC MCP Service** `jywu.jywu_mfg_agent.eia_oil` (backed by
+  a UC HTTP OAuth-M2M connection `eia_conn`), consumed over the internal
+  `…/ai-gateway/mcp-services/jywu.jywu_mfg_agent.eia_oil` path — not the public app URL.
 - **Why it matters:** resin prices track crude oil with a lag, so oil direction informs buy timing.
 
 ### 3.3 Pricing MCP — `mcp-jywu-pricing` (custom Databricks App)
@@ -76,16 +83,22 @@ ML deal-quality model, and company policy — all as tools the LLM orchestrates.
 - **Model:** a `GradientBoostingClassifier` trained on `purchase_history` (good-deal vs bad-deal),
   registered in UC and served scale-to-zero. Logged with **explicit lean `pip_requirements`**
   (mlflow, scikit-learn, numpy, pandas, cloudpickle) so the serving container is tiny and builds fast.
+- **Governed & reached** as a schema-scoped **UC MCP Service** `jywu.jywu_mfg_agent.pricing` (backed by
+  connection `pricing_conn`), consumed over the internal `…/ai-gateway/mcp-services/…` path.
 - **Two layers to remember:** the MCP app being up (tool connects/lists) is independent of the
   serving endpoint being READY (actual predictions). The pricing app's service principal needs
-  `CAN_QUERY` on the endpoint.
+  `CAN_QUERY` on the endpoint, and the endpoint is scale-to-zero (first prediction after idle is slow).
 
-### 3.4 AI Search "Procurement Playbook" — managed MCP
-- A **Delta Sync Vector Search index** (`procurement_docs_index`, qwen3 embeddings) over
-  `procurement_docs` (≈8 policy/contract snippets, Change Data Feed enabled), exposed via the
-  **managed** MCP path `/api/2.0/mcp/ai-search/jywu/jywu_mfg_agent/procurement_docs_index`.
+### 3.4 AI Search "Procurement Playbook" — managed MCP (AI-functions ingestion)
+- Built with the **AI-functions RAG pipeline**: policy **PDFs** in the volume `policy_docs` →
+  `ai_parse_document` → `ai_prep_search` (semantic chunking) → table `procurement_doc_chunks`
+  (Change Data Feed on) → **Delta Sync Vector Search index** `procurement_doc_chunks_index`
+  (qwen3 embeddings; embed `chunk_to_embed`, return `chunk_to_retrieve`).
+- Exposed via the **managed** MCP path `/api/2.0/mcp/ai-search/jywu/jywu_mfg_agent/procurement_doc_chunks_index`.
 - Grounds recommendations in company policy: approval thresholds, preferred suppliers,
   price-lock/MOQ clauses, safety-stock policy, payment terms, sustainability.
+- (The earlier `procurement_docs_index` — a direct index over the `procurement_docs` table — is
+  superseded by this PDF-sourced chunks index.)
 
 ---
 
@@ -97,9 +110,15 @@ ML deal-quality model, and company policy — all as tools the LLM orchestrates.
 | `inventory_levels` | 6 | stock, safety stock, days of supply, reorder point |
 | `production_demand` | 9 | upcoming material requirements by month |
 | `purchase_history` | 24 | past decisions with outcome labels (ML training data) |
-| `procurement_docs` | 8 | Procurement Playbook — source for the Vector Search index |
+| `procurement_docs` | 8 | Procurement Playbook rows → rendered to PDFs in the `policy_docs` volume |
+| `procurement_doc_chunks` | 8 | `ai_parse_document`+`ai_prep_search` output over the PDFs → source of the Vector Search index |
 
 Materials: HDPE, LDPE, PP · Suppliers: ChemCorp, PolySource, AsiaResin, EuroChem · Warehouses: Houston, Chicago.
+
+**Other schema securables (all UC-governed under `jywu.jywu_mfg_agent`):** Model `pricing_model`;
+Function `get_material_status`; MCP Services `eia_oil` / `pricing`; schema-scoped Connections
+`eia_conn` / `pricing_conn`; Volume `policy_docs`. (Secrets stay in the workspace scope
+`mfg-agent/eia-api-key` — a Spark-less app can't consume a UC schema secret; see §6.1/§7.)
 
 ---
 
@@ -165,3 +184,7 @@ custom MCP servers, so use **static M2M OAuth** — a service principal's `clien
 | **Managed** AI Search MCP for retrieval | Endorsed retrieval path; internal, no egress concerns. |
 | No `uv.lock` in the app deploy | Build's uv version differs from local → `--locked` mismatch; let the build resolve from `pyproject.toml`. |
 | Separate MLflow experiments | Agent tracing vs ML model runs are different concerns. |
+| **Schema-scoped UC MCP Services** for the custom MCPs | Field guidance (Unity Gateway): metastore MCP connections are being deprecated; register as `catalog.schema.name` MCP Services (GRANTs, usage tracking, internal path). |
+| **UC function via the Functions MCP** for internal data | Governed + discoverable; function-qualify the param inside subqueries or it fails under MCP named-arg invocation. |
+| **EIA key stays in a workspace secret scope** | A Spark-less MCP app can't consume a UC schema secret (`dbutils.secrets.get` is notebook/Spark-only; no Apps binding); the workspace scope injects via `valueFrom`. |
+| **AI-functions ingestion** for the Playbook | `ai_parse_document`+`ai_prep_search` over PDFs → chunks → index is the canonical RAG path; verify function `version` options against docs (they move fast). |

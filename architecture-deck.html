@@ -42,11 +42,10 @@
   .progress{height:3px;background:var(--line);flex:0 0 auto}
   .progress > i{display:block;height:100%;background:var(--accent);width:10%;
     transition:width .35s cubic-bezier(.4,0,.2,1)}
-  @media (prefers-reduced-motion:reduce){.progress>i{transition:none}}
-  .deck{flex:1 1 auto;overflow-y:auto;overflow-x:hidden}
+  @media (prefers-reduced-motion:reduce){.progress>i{transition:none}.deck{scroll-behavior:auto}}
+  .deck{flex:1 1 auto;overflow-y:auto;overflow-x:hidden;scroll-snap-type:y mandatory;scroll-behavior:smooth}
   .slide{min-height:100%;display:flex;flex-direction:column;justify-content:center;
-    padding-block:clamp(28px,6vh,72px)}
-  .slide[hidden]{display:none}  /* beats .slide{display:flex}; standalone has no [hidden]!important reset */
+    padding-block:clamp(28px,6vh,72px);scroll-snap-align:start}
   .wrap{width:100%;max-width:960px;margin:0 auto;padding:0 20px}
   .eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.16em;
     text-transform:uppercase;color:var(--accent);margin:0 0 14px}
@@ -209,10 +208,10 @@
           </div>
           <div class="layer">
             <div class="row">
-              <div class="tool"><div class="t">get_material_status</div><div class="s">function tool</div><div class="b">→ SQL Warehouse → UC tables</div></div>
-              <div class="tool"><div class="t">EIA oil MCP</div><div class="s">custom app</div><div class="b">→ api.eia.gov</div></div>
-              <div class="tool"><div class="t">Pricing MCP</div><div class="s">custom app</div><div class="b">→ Model Serving endpoint</div></div>
-              <div class="tool"><div class="t">AI Search playbook</div><div class="s">managed MCP</div><div class="b">→ Vector Search index</div></div>
+              <div class="tool"><div class="t">get_material_status</div><div class="s">UC function</div><div class="b">→ UC Functions MCP → warehouse</div></div>
+              <div class="tool"><div class="t">EIA oil</div><div class="s">UC MCP Service</div><div class="b">→ EIA app → api.eia.gov</div></div>
+              <div class="tool"><div class="t">Pricing</div><div class="s">UC MCP Service</div><div class="b">→ pricing app → serving endpoint</div></div>
+              <div class="tool"><div class="t">AI Search playbook</div><div class="s">managed MCP</div><div class="b">→ chunks index (parsed PDFs)</div></div>
             </div>
             <div class="conn"></div>
           </div>
@@ -249,16 +248,16 @@
         <div class="grid g4">
           <div class="card"><h3><span class="n">1</span>Internal data</h3>
             <p class="muted"><code>get_material_status</code> — parameterized SQL over inventory, quotes and demand; returns stock (with reorder warnings), cheapest current quote, near-term demand.</p>
-            <span class="tag">@function_tool · SQL Warehouse</span></div>
+            <span class="tag">UC function · Functions MCP</span></div>
           <div class="card"><h3><span class="n">2</span>Oil market</h3>
             <p class="muted">Current WTI/Brent spot price, history and trend from the U.S. EIA API. Key drives buy timing.</p>
-            <span class="tag">FastMCP app · secret-backed key</span></div>
+            <span class="tag">UC MCP Service · EIA API</span></div>
           <div class="card"><h3><span class="n">3</span>Deal quality</h3>
             <p class="muted"><code>predict_deal_quality</code> — a GradientBoosting model trained on purchase history, served scale-to-zero.</p>
-            <span class="tag">FastMCP app · Model Serving</span></div>
+            <span class="tag">UC MCP Service · Model Serving</span></div>
           <div class="card"><h3><span class="n">4</span>Procurement Playbook</h3>
             <p class="muted">Policy &amp; contract rules — approval thresholds, preferred suppliers, MOQ/price-lock — via vector search.</p>
-            <span class="tag">Managed MCP · Vector Search</span></div>
+            <span class="tag">Managed MCP · parsed PDFs → VS</span></div>
         </div>
       </div>
     </section>
@@ -368,34 +367,50 @@
       stitle=document.getElementById('stitle'), prev=document.getElementById('prev'),
       next=document.getElementById('next'), dots=document.getElementById('dots'),
       deck=document.getElementById('deck');
+  var reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+  slides.forEach(function(s){ s.hidden=false; });   // all slides live: navigate by scrolling
   slides.forEach(function(s,n){
     var d=document.createElement('button');
     d.className='dot'; d.setAttribute('role','tab');
-    d.setAttribute('aria-label','Slide '+(n+1)); d.addEventListener('click',function(){go(n)});
+    d.setAttribute('aria-label','Slide '+(n+1)); d.addEventListener('click',function(){go(n);});
     dots.appendChild(d);
   });
   var dotEls=[].slice.call(dots.children);
-  function render(){
-    slides.forEach(function(s,n){s.hidden = n!==i;});
-    dotEls.forEach(function(d,n){d.classList.toggle('on',n===i);});
+  function setActive(n){
+    i=n;
+    dotEls.forEach(function(d,k){d.classList.toggle('on',k===i);});
     bar.style.width=((i+1)/total*100)+'%';
     count.textContent=(i+1)+' / '+total;
     stitle.textContent=slides[i].getAttribute('data-title')||'';
     prev.disabled=i===0; next.disabled=i===total-1;
-    deck.scrollTop=0;
     try{history.replaceState(null,'','#s'+(i+1));}catch(e){}
   }
-  function go(n){ i=Math.max(0,Math.min(total-1,n)); render(); }
-  next.addEventListener('click',function(){go(i+1)});
-  prev.addEventListener('click',function(){go(i-1)});
+  function go(n){
+    n=Math.max(0,Math.min(total-1,n));
+    slides[n].scrollIntoView({behavior:reduce?'auto':'smooth',block:'start'});
+    setActive(n);
+  }
+  // keep the nav in sync as the user scrolls the deck
+  var io=new IntersectionObserver(function(entries){
+    var best=null;
+    entries.forEach(function(e){
+      if(e.isIntersecting && (!best || e.intersectionRatio>best.intersectionRatio)) best=e;
+    });
+    if(best){ var n=slides.indexOf(best.target); if(n>=0 && n!==i) setActive(n); }
+  },{root:deck,threshold:[0.5,0.75,1]});
+  slides.forEach(function(s){ io.observe(s); });
+  next.addEventListener('click',function(){go(i+1);});
+  prev.addEventListener('click',function(){go(i-1);});
   document.addEventListener('keydown',function(e){
-    if(e.key==='ArrowRight'||e.key==='PageDown'){go(i+1);}
-    else if(e.key==='ArrowLeft'||e.key==='PageUp'){go(i-1);}
-    else if(e.key==='Home'){go(0);} else if(e.key==='End'){go(total-1);}
+    if(e.key==='ArrowRight'||e.key==='ArrowDown'||e.key==='PageDown'||e.key===' '){e.preventDefault();go(i+1);}
+    else if(e.key==='ArrowLeft'||e.key==='ArrowUp'||e.key==='PageUp'){e.preventDefault();go(i-1);}
+    else if(e.key==='Home'){e.preventDefault();go(0);}
+    else if(e.key==='End'){e.preventDefault();go(total-1);}
   });
-  var m=(location.hash||'').match(/^#s(\d+)$/);
-  if(m){var n=parseInt(m[1],10)-1; if(n>=0&&n<total) i=n;}
-  render();
+  var m=(location.hash||'').match(/^#s(\d+)$/), start=0;
+  if(m){var s0=parseInt(m[1],10)-1; if(s0>=0 && s0<total) start=s0;}
+  setActive(start);
+  if(start>0) slides[start].scrollIntoView({block:'start'});
 })();
 </script>
 </body>
