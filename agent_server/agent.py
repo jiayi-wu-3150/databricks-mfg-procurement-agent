@@ -18,7 +18,6 @@ from mlflow.types.responses import (
     ResponsesAgentStreamEvent,
 )
 
-from agent_server.procurement_tools import get_material_status_data
 from agent_server.utils import (
     deduplicate_input,
     get_databricks_host_from_env,
@@ -80,19 +79,6 @@ def get_current_time() -> str:
     return datetime.now().isoformat()
 
 
-@function_tool
-def get_material_status(material: str) -> str:
-    """Get internal procurement status for a PE resin material (HDPE, LDPE, or PP).
-
-    Returns on-hand inventory by warehouse (with safety stock, days of supply, and reorder-point
-    warnings), the cheapest current supplier quote, and near-term production demand.
-
-    Args:
-        material: Material code — one of "HDPE", "LDPE", "PP".
-    """
-    return get_material_status_data(material)
-
-
 def build_mcp_servers(workspace_client: WorkspaceClient) -> list[McpServer]:
     """MCP servers to offer the agent. Unavailable ones are dropped by the health check, so the
     EIA/pricing app MCPs can be listed before those apps are deployed (set via env once they are).
@@ -105,6 +91,13 @@ def build_mcp_servers(workspace_client: WorkspaceClient) -> list[McpServer]:
     servers.append(McpServer(
         url=f"{host}/api/2.0/mcp/ai-search/{cat}/{sch}/{idx}",
         name="procurement_playbook_search",
+        workspace_client=workspace_client,
+    ))
+
+    # UC Functions MCP — governed UC functions in the schema (e.g. get_material_status)
+    servers.append(McpServer(
+        url=f"{host}/api/2.0/mcp/functions/{cat}/{sch}",
+        name="uc_functions",
         workspace_client=workspace_client,
     ))
 
@@ -149,7 +142,7 @@ def create_agent(mcp_servers: list[McpServer] | None = None) -> Agent:
         name="Procurement Advisor",
         instructions=AGENT_INSTRUCTIONS,
         model=LLM_MODEL,
-        tools=[get_current_time, get_material_status],
+        tools=[get_current_time],  # get_material_status now served via the UC Functions MCP
         mcp_servers=mcp_servers or [],
     )
 

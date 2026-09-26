@@ -48,7 +48,7 @@ resources:
           - name: AGENT_LLM_MODEL
             value: "databricks-claude-sonnet-4-5"
           - name: AI_SEARCH_INDEX
-            value: "jywu.jywu_mfg_agent.procurement_docs_index"
+            value: "jywu.jywu_mfg_agent.procurement_doc_chunks_index"
           - name: MFG_CATALOG
             value: "jywu"
           - name: MFG_SCHEMA
