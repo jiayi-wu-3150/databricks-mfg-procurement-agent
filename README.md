@@ -11,10 +11,10 @@ and company policy — each exposed as a tool the LLM orchestrates.
 ### The four tools
 | # | Tool | How it works |
 |---|------|--------------|
-| 1 | `get_material_status` — inventory, cheapest quote, demand | `@function_tool` → SQL Warehouse |
-| 2 | Oil prices — WTI/Brent spot, history, trend | FastMCP app (`mcp_server_eia`) → EIA API |
-| 3 | `predict_deal_quality` — good/bad deal | FastMCP app (`mcp_server_pricing`) → Model Serving |
-| 4 | Procurement Playbook — approval/policy rules | Managed MCP → Vector Search index |
+| 1 | `get_material_status` — inventory, cheapest quote, demand | UC function → **UC Functions MCP** → SQL Warehouse |
+| 2 | Oil prices — WTI/Brent spot, history, trend | **UC MCP Service** `eia_oil` (FastMCP app `mcp_server_eia`) → EIA API |
+| 3 | `predict_deal_quality` — good/bad deal | **UC MCP Service** `pricing` (FastMCP app `mcp_server_pricing`) → Model Serving |
+| 4 | Procurement Playbook — approval/policy rules | **Managed MCP** → Vector Search index (parsed-PDF chunks) |
 
 **Stack:** OpenAI Agents SDK + MLflow `agent_server` · `databricks-claude-sonnet-4-5` (direct FM serving) ·
 Lakebase session memory · MLflow tracing · Unity Catalog `jywu.jywu_mfg_agent`.
