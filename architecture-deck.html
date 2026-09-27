@@ -298,21 +298,34 @@
     </section>
 
     <!-- 8 -->
-    <section class="slide" data-title="Deploy & security" hidden>
+    <section class="slide" data-title="Authorization" hidden>
       <div class="wrap">
-        <p class="eyebrow">Deployment &amp; security</p>
-        <h2>Bundles, apps, and least-privilege</h2>
+        <p class="eyebrow">Authorization architecture</p>
+        <h2>Every hop authenticated — no PATs</h2>
         <ul class="clean">
-          <li><strong>Agent app</strong> ships as a Databricks Asset Bundle; runtime config (model, catalog, warehouse, MCP URLs, Lakebase) lives in the bundle's <code>config.env</code>.</li>
-          <li><strong>MCP servers</strong> deploy as separate Databricks Apps (<code>apps create</code> → <code>sync</code> → <code>apps deploy</code>).</li>
-          <li><strong>Auth:</strong> the agent's service principal gets <code>CAN_USE</code> on the MCP apps &amp; warehouse, <code>SELECT</code> on the schema, and Lakebase privileges; the pricing app's SP gets <code>CAN_QUERY</code> on the endpoint.</li>
-          <li><strong>Secrets:</strong> the EIA API key is injected from a Databricks secret via <code>valueFrom</code> — never hardcoded.</li>
-          <li><strong>Egress:</strong> where app-to-app egress is restricted, register the MCP apps as UC MCP Services and reach them over the internal path.</li>
+          <li><strong>End user → agent app</strong> over Databricks OAuth (U2M); the app's ACL (<code>CAN_USE</code>) gates who may call it.</li>
+          <li><strong>Agent app SP</strong> makes every outbound call with its own token: <code>CAN QUERY</code> the LLM, <code>EXECUTE</code> on the UC function and the <code>eia_oil</code>/<code>pricing</code> MCP services, read on the AI Search index, Postgres grants on Lakebase.</li>
+          <li><strong>Connector SP</strong> — its static M2M OAuth creds live <em>inside</em> the UC connections; UC uses them to reach the custom MCP apps over the internal <code>/ai-gateway/mcp-services/…</code> path, so nothing depends on public app egress.</li>
+          <li><strong>Pricing app SP</strong> gets <code>CAN_QUERY</code> on the model-serving endpoint.</li>
+          <li><strong>Secrets:</strong> the EIA key sits in a workspace secret scope, injected via <code>valueFrom</code>; the connector secret is stored inside the UC connection — never in git.</li>
         </ul>
       </div>
     </section>
 
     <!-- 9 -->
+    <section class="slide" data-title="Deployment" hidden>
+      <div class="wrap">
+        <p class="eyebrow">Deployment</p>
+        <h2>Bundles &amp; a reproducible prep runbook</h2>
+        <ul class="clean">
+          <li><strong>Agent app</strong> ships as a Databricks Asset Bundle; runtime config (model, catalog, warehouse, MCP URLs, Lakebase) lives in the bundle's <code>config.env</code>.</li>
+          <li><strong>MCP servers</strong> deploy as separate Databricks Apps (<code>apps create</code> → <code>sync</code> → <code>apps deploy</code>).</li>
+          <li><strong>Prep runbook</strong> (<code>setup/README.md</code>): data → pricing model → policy PDFs → AI-functions chunks index → UC governance (connections / services / function) → grants.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 10 -->
     <section class="slide" data-title="Lessons" hidden>
       <div class="wrap">
         <p class="eyebrow">Design decisions &amp; lessons</p>
@@ -332,7 +345,7 @@
       </div>
     </section>
 
-    <!-- 10 -->
+    <!-- 11 -->
     <section class="slide" data-title="Live example" hidden>
       <div class="wrap">
         <p class="eyebrow">End to end · live on the deployed agent</p>

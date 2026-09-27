@@ -14,23 +14,21 @@ ML deal-quality model, and company policy — all as tools the LLM orchestrates.
 ## 1. High-level architecture
 
 ```
-                          ┌──────────────────────────────────────────────┐
-                          │        Databricks App: mfg-procurement-agent  │
-        user ──chat──▶    │  React chat UI  +  MLflow agent_server (FastAPI)│
-                          │           OpenAI Agents SDK (Runner)           │
-                          └───────┬───────────────────────┬───────────────┘
-                                  │ LLM (plan/act)         │ tools
-                                  ▼                        ▼
-                   databricks-claude-sonnet-4-5   ┌─────────────────────────────────┐
-                   (Foundation Model serving)     │ 1. get_material_status           │──▶ UC Functions MCP ──▶ UC tables
-                                                  │    (UC function, governed)       │
-                                                  │ 2. EIA oil  (UC MCP Service)     │──▶ api.eia.gov (WTI/Brent)
-                                                  │ 3. Pricing  (UC MCP Service)     │──▶ Model Serving: jywu-pricing-model
-                                                  │ 4. AI Search (managed MCP)       │──▶ VS index (parsed-PDF chunks)
-                                                  └─────────────────────────────────┘
-                                  │ session memory                │ traces
-                                  ▼                               ▼
-                        Lakebase (Postgres)                 MLflow experiment
+                        ┌───────────────────────────────────────────────┐
+     user ──chat──▶     │ Databricks App: mfg-procurement-agent         │
+                        │ React chat UI · MLflow agent_server (FastAPI) │
+                        │ OpenAI Agents SDK (Runner)                    │
+                        └───────────────────────────────────────────────┘
+                             │  LLM (plan/act)                    │  tools
+                             ▼                                   ▼
+   databricks-claude-sonnet-4-5      ┌──────────────────────────────────────────┐
+   (Foundation Model serving)        │ 1. get_material_status  (UC function)    │──▶ UC Functions MCP ──▶ UC tables
+                                     │ 2. EIA oil              (UC MCP Service) │──▶ api.eia.gov (WTI/Brent)
+                                     │ 3. Pricing              (UC MCP Service) │──▶ Model Serving: jywu-pricing-model
+                                     │ 4. AI Search            (managed MCP)    │──▶ VS index (parsed-PDF chunks)
+                                     └──────────────────────────────────────────┘
+
+   session memory ──▶ Lakebase (Postgres)              traces ──▶ MLflow experiment
 ```
 
 **Request flow for one question**
@@ -118,7 +116,7 @@ Materials: HDPE, LDPE, PP · Suppliers: ChemCorp, PolySource, AsiaResin, EuroChe
 **Other schema securables (all UC-governed under `jywu.jywu_mfg_agent`):** Model `pricing_model`;
 Function `get_material_status`; MCP Services `eia_oil` / `pricing`; schema-scoped Connections
 `eia_conn` / `pricing_conn`; Volume `policy_docs`. (Secrets stay in the workspace scope
-`mfg-agent/eia-api-key` — a Spark-less app can't consume a UC schema secret; see §6.1/§7.)
+`mfg-agent/eia-api-key` — a Spark-less app can't consume a UC schema secret; see §6 and §8.)
 
 ---
 
@@ -134,47 +132,101 @@ Function `get_material_status`; MCP Services `eia_oil` / `pricing`; schema-scope
 
 ---
 
-## 6. Deployment & security
+## 6. Authorization architecture
+
+Every hop is authenticated and short-lived — **no PATs anywhere**. Four kinds of identity are involved:
+
+| Principal | What it is | Used for |
+|---|---|---|
+| **End user** | The human in the chat UI (Databricks OAuth, U2M) | Reaching the agent app; the app's ACL (`CAN_USE`) gates who may call it. |
+| **Agent app SP** | The service principal the `mfg-procurement-agent` app runs as | *All* the agent's outbound calls — LLM, managed MCPs, UC MCP Services, warehouse, Lakebase. |
+| **Connector SP** | A separate SP whose static M2M OAuth creds are stored inside the UC connections (`eia_conn`, `pricing_conn`) | Authenticating the internal **UC MCP Service → custom MCP app** hop. |
+| **MCP-app SPs** | Each custom MCP app (`mcp-jywu-eia-oil`, `mcp-jywu-pricing`) runs as its own SP | The pricing app SP calls the model-serving endpoint. |
+
+**Token flow for one request**
+
+```
+  (1)  end user ──Databricks OAuth (U2M)──▶  agent app        [app ACL: user has CAN_USE]
+                                                │  runs as AGENT APP SP
+                                                ▼
+       agent app SP makes each call with its own token, authorized independently:
+         (2) LLM (Foundation Model serving) ...... CAN QUERY on the serving endpoint
+         (3) UC Functions MCP  /api/2.0/mcp/… ..... EXECUTE on get_material_status  (+ USE CAT/SCH)
+         (4) AI Search MCP     /api/2.0/mcp/… ..... read on the Vector Search index
+         (5) UC MCP Services   /ai-gateway/…  ...... EXECUTE on eia_oil / pricing
+         (8) Lakebase (Postgres) .................. Postgres grants (session memory)
+
+       (5) then continues outbound to the custom MCP app, over the connection's creds:
+         UC MCP Service ─(6) connector SP static M2M OAuth · CAN_USE on app─▶ EIA / pricing app
+         pricing app    ─(7) pricing app SP · CAN_QUERY──────────────────────▶ model-serving endpoint
+```
+
+**Grants matrix — who needs what**
+
+| Grantee | Grant | On |
+|---|---|---|
+| End user | `CAN_USE` | the agent app |
+| Agent app SP | `CAN QUERY` | the LLM serving endpoint (Foundation Model) |
+| Agent app SP | `USE CATALOG` + `USE SCHEMA` | `jywu.jywu_mfg_agent` |
+| Agent app SP | `SELECT` | schema tables + the `procurement_doc_chunks_index` (AI Search MCP) |
+| Agent app SP | `EXECUTE` | function `get_material_status` (UC Functions MCP) |
+| Agent app SP | `EXECUTE` | MCP Services `eia_oil`, `pricing` |
+| Agent app SP | `CAN_USE` | the SQL warehouse (if the function/queries route through it) |
+| Agent app SP | Postgres `USAGE`/`CREATE` + table DML | Lakebase schemas (`scripts/grant_lakebase_permissions.py`) |
+| Connector SP | `CAN_USE` | both custom MCP apps (creds live in the connections) |
+| Pricing app SP | `CAN_QUERY` | serving endpoint `jywu-pricing-model` |
+
+**Secrets.** The EIA API key lives in a **workspace secret scope** (`mfg-agent/eia-api-key`) and is
+injected into the EIA app via `app.yaml` `valueFrom` — never hardcoded, never in git. (A Spark-less
+app can't consume a UC *schema* secret; see §8.) The connector SP's client secret is passed to
+`setup/create_uc_governance.py` via env (`CONNECTOR_SP_SECRET`) and stored inside the UC connection
+object, so it isn't in the repo either.
+
+### 6.1 How the agent reaches the custom MCP servers — and when a UC connection is needed
+
+A custom MCP server is a Databricks App with a public URL (`https://<app>.databricksapps.com/mcp`).
+There are two ways to reach it:
+
+**Via a UC connection + UC MCP Service — what this deployment uses.** The two custom MCPs are
+registered as schema-scoped **UC MCP Services** (`eia_oil`, `pricing`) backed by HTTP OAuth-M2M
+**connections** (`eia_conn`, `pricing_conn`). The agent calls the internal
+`…/ai-gateway/mcp-services/<catalog.schema.name>` path: UC checks the agent SP's `EXECUTE` grant on
+the service, then uses the connection's connector-SP M2M credentials to authenticate outbound to the
+app (steps 5→6 above). This keeps the tools UC-governed and doesn't depend on public app egress.
+
+**Direct by URL — the simpler alternative.** The agent's `McpServer(url=...)` calls the app's public
+URL over OAuth directly. It works only where app-to-app egress is open (as it happens to be on this
+Azure workspace) and gives you no UC governance. Prefer the UC MCP Service path whenever any of these hold:
+
+| Situation | Why the UC MCP Service path is required |
+|---|---|
+| **Restricted app egress** (NCC/Private Link, or workspaces that block outbound to `*.databricksapps.com`) | A URL-calling agent can't reach the public app — you hit `serverless network policy` / connection-refused. The internal path is fetched by the control plane, which isn't subject to the app's egress block. (This was the blocker on the earlier fevm workspace.) |
+| **Supervisor Agent / Agent Bricks** as the caller | These consume tools as **UC MCP Services** (governed securables), not raw app URLs. A custom-code agent can call a URL directly; SA/Agent Bricks cannot. |
+| **UC governance** over the tool | Grants, ownership, and auditing on the tool like any other catalog object. |
+
+**Auth for the connection:** Databricks does **not** support Dynamic Client Registration for custom
+MCP servers, so the connection uses **static M2M OAuth** — the connector SP's `client_id` + secret with
+`CAN_USE` on the app, wired as `client_credentials` against the workspace `/oidc/v1/token` endpoint.
+(PATs are not accepted for custom MCPs on Apps.)
+
+> **Note:** the **AI Search Playbook** and **UC Functions** tools use built-in managed-MCP paths
+> (`/api/2.0/mcp/ai-search/…`, `/api/2.0/mcp/functions/…`) and need no connection — the UC-connection
+> question only concerns the two **custom** app-hosted MCP servers (EIA, pricing).
+
+---
+
+## 7. Deployment
 
 - **Agent app:** Databricks Asset Bundle (`databricks.yml`) → `databricks bundle deploy && run`.
   Runtime config (LLM model, catalog/schema/warehouse, MCP URLs, Lakebase, experiment) lives in
   the bundle's `config.env`.
 - **MCP servers:** deployed as separate Databricks Apps (`apps create` + `sync` + `apps deploy`).
-- **Auth model:** the agent app's **service principal** is granted: `CAN_USE` on both MCP apps,
-  `CAN_USE` on the SQL warehouse, `USE CATALOG`/`USE SCHEMA`/`SELECT` on the schema, and Lakebase
-  Postgres privileges. The pricing MCP's SP is granted `CAN_QUERY` on the serving endpoint.
-### 6.1 How the agent reaches the custom MCP servers — and when a UC connection is needed
-
-A custom MCP server is a Databricks App with a public URL (`https://<app>.databricksapps.com/mcp`).
-There are two ways for a caller to reach it, and which one you need depends on the caller and the
-network:
-
-**Direct by URL (what this deployment uses).** The agent's `McpServer(url=...)` calls the app's
-public URL over OAuth. This works here because **this Azure workspace's app-to-app egress is open**,
-so the deployed agent can reach `*.databricksapps.com` directly. Nothing extra to register.
-
-**Via a UC connection + UC MCP Service (needed in these cases):** register the MCP app in Unity
-Catalog as an **HTTP connection** (`is_mcp_connection`, `credential_type=OAUTH_M2M`) so callers reach
-it over the **internal managed-MCP path** instead of the public URL. Register it when:
-
-| Situation | Why the UC connection is required |
-|---|---|
-| **Restricted app egress** (NCC/Private Link, or workspaces that block outbound to `*.databricksapps.com`) | The deployed agent can't reach the public URL — you hit `serverless network policy` / connection-refused. The internal managed-MCP path is fetched by the control plane, which isn't subject to the app's egress block. (This was the blocker on the earlier fevm workspace.) |
-| **Supervisor Agent / Agent Bricks** as the caller | These consume tools as **UC MCP Services** (governed securables), not raw app URLs. A custom-code agent (our OpenAI Agents SDK app) can call a URL directly; SA/Agent Bricks cannot. |
-| **UC governance** over the tool | You want the MCP server managed as a UC securable — grants, ownership, auditing — like any other catalog object. |
-
-**Auth for the connection:** Databricks does **not** support Dynamic Client Registration for
-custom MCP servers, so use **static M2M OAuth** — a service principal's `client_id` + secret with
-`CAN_USE` on the app, wired into the connection as `client_credentials` against the workspace
-`/oidc/v1/token` endpoint. (PATs are not accepted for custom MCPs on Apps.)
-
-> **Note:** the **AI Search Playbook** tool always uses the internal managed-MCP path
-> (`/api/2.0/mcp/ai-search/...`) — that's a built-in managed MCP and needs no connection. The
-> "UC connection" question only concerns the two **custom** app-hosted MCP servers (EIA, pricing).
+- **Prep runbook:** `setup/README.md` has the full ordered sequence — data, pricing model, policy
+  PDFs, AI-functions chunks index, UC governance (connections/services/function), and grants.
 
 ---
 
-## 7. Key design decisions & lessons
+## 8. Key design decisions & lessons
 
 | Decision / lesson | Why |
 |---|---|
