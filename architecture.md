@@ -186,26 +186,41 @@ Every hop is authenticated and short-lived — **no PATs anywhere**. Four kinds 
 | Principal | What it is | Used for |
 |---|---|---|
 | **End user** | The human in the chat UI (Databricks OAuth, U2M) | Reaching the agent app; the app's ACL (`CAN_USE`) gates who may call it. |
-| **Agent app SP** | The service principal the `mfg-procurement-agent` app runs as | *All* the agent's outbound calls — LLM, managed MCPs, UC MCP Services, warehouse, Lakebase. |
-| **Connector SP** | A separate SP whose static M2M OAuth creds are stored inside the UC connections (`eia_conn`, `pricing_conn`) | Authenticating the internal **UC MCP Service → custom MCP app** hop. |
-| **MCP-app SPs** | Each custom MCP app (`mcp-jywu-eia-oil`, `mcp-jywu-pricing`) runs as its own SP | The pricing app SP calls the model-serving endpoint. |
+| **Agent app SP** (`SP_agent`) | The service principal the `mfg-procurement-agent` app runs as | *All* the agent's outbound calls — LLM, managed MCPs, UC MCP Services, warehouse, Lakebase. |
+| **Connector SP** (`SP_connector`) | A separate SP (`mfg-mcp-connector`) whose static M2M OAuth creds are stored inside the UC connections (`eia_conn`, `pricing_conn`) | Authenticating the internal **UC MCP Service → custom MCP app** hop. |
+| **MCP-app SPs** (e.g. `SP_pricing`) | Each custom MCP app (`mcp-jywu-eia-oil`, `mcp-jywu-pricing`) runs as its own SP | The pricing app SP calls the model-serving endpoint. |
 
 **Token flow for one request**
 
 ```
-  (1)  end user ──Databricks OAuth (U2M)──▶  agent app        [app ACL: user has CAN_USE]
-                                                │  runs as AGENT APP SP
-                                                ▼
-       agent app SP makes each call with its own token, authorized independently:
-         (2) LLM (Foundation Model serving) ...... CAN QUERY on the serving endpoint
-         (3) UC Functions MCP  /api/2.0/mcp/… ..... EXECUTE on get_material_status  (+ USE CAT/SCH)
-         (4) AI Search MCP     /api/2.0/mcp/… ..... read on the Vector Search index
-         (5) UC MCP Services   /ai-gateway/…  ...... EXECUTE on eia_oil / pricing
-         (8) Lakebase (Postgres) .................. Postgres grants (session memory)
+STEP 0 — LOGIN
+   You ──OAuth login──▶ Agent App        [app ACL: you have CAN_USE]
+        The app then runs as ONE identity: SP_agent.
+        Your user identity is NOT forwarded downstream — everything below is SP_agent.
 
-       (5) then continues outbound to the custom MCP app, over the connection's creds:
-         UC MCP Service ─(6) connector SP static M2M OAuth · CAN_USE on app─▶ EIA / pricing app
-         pricing app    ─(7) pricing app SP · CAN_QUERY──────────────────────▶ model-serving endpoint
+STEP 1 — THE AGENT'S OWN CALLS        (all carry the SAME token: SP_agent)
+   Agent App  ── SP_agent token ──▶  LLM (Foundation Model serving)   needs: CAN QUERY
+              ── SP_agent token ──▶  UC Functions MCP  /api/2.0/mcp/functions/…
+                                                                      needs: EXECUTE on the function
+              ── SP_agent token ──▶  AI Search MCP     /api/2.0/mcp/ai-search/…
+                                                                      needs: read on the index
+              ── SP_agent token ──▶  Lakebase (Postgres)             needs: Postgres grants
+              ── SP_agent token ──▶  UC MCP Service
+                                     /ai-gateway/mcp-services/jywu.jywu_mfg_agent.eia_oil
+                                                                      needs: EXECUTE on the service
+                                              │
+                                              ▼   ← HERE the identity changes (the handoff)
+
+STEP 2 — UC MCP SERVICE ──▶ CUSTOM MCP APP      (a SECOND identity: SP_connector)
+   UC/AI-Gateway opens the connection `eia_conn`, which stores SP_connector's
+   client_id + secret, and mints an M2M OAuth token for SP_connector.
+
+   UC (as SP_connector) ── M2M token ──▶ EIA MCP app     needs: SP_connector CAN_USE on the app
+        ↑ the agent never sees this token; the control plane does the handoff internally
+
+STEP 3 — INSIDE THE CUSTOM APPS
+   EIA MCP app     ── EIA_API_KEY (from workspace secret) ──▶ api.eia.gov
+   Pricing MCP app ── SP_pricing token ──▶ model-serving endpoint   needs: SP_pricing CAN_QUERY
 ```
 
 **Grants matrix — who needs what**
