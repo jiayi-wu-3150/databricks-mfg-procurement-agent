@@ -138,27 +138,23 @@
   .dot.on{background:var(--accent);transform:scale(1.25)}
   @media (max-width:560px){.g2,.g4,.signals{grid-template-columns:1fr}
     .dots{display:none}}
-  /* token-flow stepper */
-  .flow{margin-top:18px;display:flex;flex-direction:column;gap:8px}
-  .step{display:flex;gap:12px;background:var(--surface);border:1px solid var(--line);
-    border-radius:10px;padding:11px 13px;box-shadow:var(--shadow)}
-  .step .sn{flex:0 0 auto;width:24px;height:24px;border-radius:7px;background:var(--steel);
-    color:var(--paper);font-family:var(--mono);font-size:12px;display:grid;place-items:center}
-  .step.a .sn{background:var(--accent)}
-  .step .sc{flex:1 1 auto;min-width:0}
-  .step h3{font-family:var(--disp);font-weight:700;font-size:14.5px;margin:1px 0 4px;
-    display:flex;align-items:center;gap:9px;flex-wrap:wrap}
-  .step p{margin:0;font-size:13px;color:var(--ink-soft)}
-  .step p strong,.step p code{color:var(--ink)}
-  .idtag{font-family:var(--mono);font-size:10.5px;padding:2px 7px;border-radius:5px;
-    background:var(--steel-soft);color:var(--steel)}
-  .idtag.alt{background:var(--accent-soft);color:var(--accent)}
-  ul.mini{margin:6px 0 0;padding:0;list-style:none;display:grid;gap:4px}
-  ul.mini li{font-size:12.5px;color:var(--ink-soft)}
-  ul.mini li b{font-family:var(--mono);font-size:11px;color:var(--steel);
-    background:var(--steel-soft);border-radius:4px;padding:1px 5px;margin-right:6px}
-  .handoff{font-family:var(--mono);font-size:12px;color:var(--accent);text-align:center;
-    padding:2px 0}
+  /* authorization flow */
+  .idpill{font-family:var(--mono);font-size:10.5px;padding:2px 8px;border-radius:999px;
+    background:var(--steel-soft);color:var(--steel);white-space:nowrap}
+  .idpill.alt{background:var(--accent-soft);color:var(--accent)}
+  .fork{display:flex;gap:14px;flex-wrap:wrap;align-items:stretch;width:100%}
+  .lane{flex:1 1 300px;display:flex;flex-direction:column;align-items:center;gap:0}
+  .lane > .cap{font-family:var(--mono);font-size:11px;letter-spacing:.04em;color:var(--ink-soft);
+    margin-bottom:8px}
+  .authlist{margin:6px 0 0;padding:0;list-style:none;display:grid;gap:6px;width:100%}
+  .authlist li{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;
+    padding:7px 10px;background:var(--surface);border:1px solid var(--line);border-radius:8px}
+  .authlist li span{color:var(--ink-soft)}
+  .authlist li b{font-family:var(--mono);font-size:10.5px;color:var(--steel);
+    background:var(--steel-soft);border-radius:4px;padding:1px 6px;white-space:nowrap}
+  .handoff{font-family:var(--mono);font-size:11px;color:var(--accent);text-align:center;
+    padding:5px 10px;background:var(--accent-soft);border-radius:999px;margin:8px 0}
+  .box.conn2{border-color:var(--accent);border-width:1.5px}
 </style>
 </head>
 <body>
@@ -322,56 +318,44 @@
     <section class="slide" data-title="Authorization" hidden>
       <div class="wrap">
         <p class="eyebrow">Authorization architecture</p>
-        <h2>Every hop authenticated — no PATs</h2>
-        <ul class="clean">
-          <li><strong>End user → agent app</strong> over Databricks OAuth (U2M); the app's ACL (<code>CAN_USE</code>) gates who may call it.</li>
-          <li><strong>Agent app SP</strong> makes every outbound call with its own token: <code>CAN QUERY</code> the LLM, <code>EXECUTE</code> on the UC function and the <code>eia_oil</code>/<code>pricing</code> MCP services, read on the AI Search index, Postgres grants on Lakebase.</li>
-          <li><strong>Connector SP</strong> — its static M2M OAuth creds live <em>inside</em> the UC connections; UC uses them to reach the custom MCP apps over the internal <code>/ai-gateway/mcp-services/…</code> path, so nothing depends on public app egress.</li>
-          <li><strong>Pricing app SP</strong> gets <code>CAN_QUERY</code> on the model-serving endpoint.</li>
-          <li><strong>Secrets:</strong> the EIA key sits in a workspace secret scope, injected via <code>valueFrom</code>; the connector secret is stored inside the UC connection — never in git.</li>
-        </ul>
-      </div>
-    </section>
-
-    <!-- 8b -->
-    <section class="slide" data-title="Token flow" hidden>
-      <div class="wrap">
-        <p class="eyebrow">Authorization · token flow</p>
-        <h2>One request, three identities</h2>
-        <div class="flow">
-          <div class="step a">
-            <div class="sn">0</div>
-            <div class="sc">
-              <h3>Login</h3>
-              <p>You reach the app over <strong>Databricks OAuth</strong> (app ACL: <code>CAN_USE</code>). From here the app runs as <em>one</em> identity, <code>SP_agent</code> — your user identity is <strong>not</strong> forwarded downstream.</p>
-            </div>
+        <h2>One request, a chain of identities</h2>
+        <div class="diagram">
+          <div class="layer">
+            <div class="box"><div class="t">End user · chat UI</div>
+              <div class="s">Databricks OAuth (U2M) · app ACL grants CAN_USE</div></div>
+            <div class="conn"></div>
           </div>
-          <div class="step">
-            <div class="sn">1</div>
-            <div class="sc">
-              <h3>The agent's own calls <span class="idtag">SP_agent</span></h3>
-              <ul class="mini">
-                <li><b>CAN QUERY</b>LLM — Foundation Model serving</li>
-                <li><b>EXECUTE</b>UC Functions MCP <code>/api/2.0/mcp/functions/…</code></li>
-                <li><b>read</b>AI Search MCP <code>/api/2.0/mcp/ai-search/…</code></li>
-                <li><b>grants</b>Lakebase (Postgres) — session memory</li>
-                <li><b>EXECUTE</b>UC MCP Service <code>/ai-gateway/mcp-services/…</code></li>
-              </ul>
-            </div>
+          <div class="layer">
+            <div class="box hero"><div class="t">Agent App &nbsp;<span class="idpill">SP_agent</span></div>
+              <div class="s">runs as one identity — every outbound call below carries this token</div></div>
+            <div class="conn"></div>
           </div>
-          <div class="handoff">↓ the identity changes here — the handoff</div>
-          <div class="step a">
-            <div class="sn">2</div>
-            <div class="sc">
-              <h3>UC MCP Service → custom app <span class="idtag alt">SP_connector</span></h3>
-              <p>UC/AI-Gateway opens the connection (<code>eia_conn</code>), which stores <code>SP_connector</code>'s client_id + secret, and mints an <strong>M2M OAuth</strong> token to reach the app (<code>CAN_USE</code> on the app). <strong>The agent never sees this token</strong> — the control plane does the handoff.</p>
-            </div>
-          </div>
-          <div class="step">
-            <div class="sn">3</div>
-            <div class="sc">
-              <h3>Inside the custom apps</h3>
-              <p><strong>EIA app</strong> → <code>api.eia.gov</code> with its API key (workspace secret). <strong>Pricing app</strong> → model-serving endpoint as <code>SP_pricing</code> (<code>CAN_QUERY</code>).</p>
+          <div class="layer">
+            <div class="fork">
+              <div class="lane">
+                <div class="cap">DIRECT CALLS · as SP_agent</div>
+                <ul class="authlist">
+                  <li><span>LLM · Foundation Model serving</span><b>CAN QUERY</b></li>
+                  <li><span>UC Functions MCP</span><b>EXECUTE</b></li>
+                  <li><span>AI Search MCP</span><b>read</b></li>
+                  <li><span>Lakebase · session memory</span><b>Postgres grants</b></li>
+                </ul>
+              </div>
+              <div class="lane">
+                <div class="cap">CUSTOM-MCP PATH · the handoff</div>
+                <div class="box" style="width:100%"><div class="t">UC MCP Service</div>
+                  <div class="s">agent holds EXECUTE — still SP_agent</div></div>
+                <div class="conn"></div>
+                <div class="handoff">identity changes → SP_connector</div>
+                <div class="conn"></div>
+                <div class="box conn2" style="width:100%"><div class="t">Custom MCP app &nbsp;<span class="idpill alt">SP_connector</span></div>
+                  <div class="s">UC logs in with the connection's M2M creds (CAN_USE on app) · the agent never sees this token</div></div>
+                <div class="conn"></div>
+                <div class="row">
+                  <div class="tool"><div class="t">api.eia.gov</div><div class="s">EIA key · workspace secret</div></div>
+                  <div class="tool"><div class="t">model-serving endpoint</div><div class="s">SP_pricing · CAN_QUERY</div></div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
