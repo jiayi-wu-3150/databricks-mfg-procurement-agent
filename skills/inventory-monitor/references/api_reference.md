@@ -1,8 +1,11 @@
 # API Reference — Inventory Data
 
-## Genie Space (Managed MCP)
+## Internal data — `get_material_status` (UC function via UC Functions MCP)
 
-Natural language SQL over inventory and demand tables in Unity Catalog (`jywu.agent_mcp`).
+`jywu.jywu_mfg_agent.get_material_status(material)` summarizes on-hand inventory, the cheapest
+recent quote, and next-month demand from the tables below (returns the **aggregate** on-hand
+figure). Safety-stock/reorder policy comes from the **AI Search Playbook** over
+`procurement_doc_chunks_index`. Per-warehouse `days_of_supply` lives in `inventory_levels`.
 
 ### `inventory_levels`
 
@@ -10,12 +13,13 @@ Current warehouse stock levels for PE resin materials.
 
 | Column | Type | Description |
 |--------|------|-------------|
+| snapshot_date | date | Snapshot date of the reading |
 | material | string | HDPE, LDPE, or PP |
 | warehouse | string | Houston or Chicago |
-| quantity_tons | double | Current stock on hand |
-| safety_stock_tons | double | Minimum acceptable stock level |
+| quantity_tons | int | Current stock on hand |
+| safety_stock_tons | int | Minimum acceptable stock level |
 | days_of_supply | int | Days until stockout at current consumption rate |
-| last_updated | string | Last update timestamp |
+| reorder_point_tons | int | On-hand level that triggers a replenishment PO |
 
 **Materials:** HDPE (Packaging Film), LDPE (Shrink Wrap), PP (Containers)
 **Warehouses:** Houston, Chicago
@@ -26,11 +30,12 @@ Upcoming material requirements by production month.
 
 | Column | Type | Description |
 |--------|------|-------------|
+| production_month | string | Production month (YYYY-MM) |
 | material | string | HDPE, LDPE, or PP |
-| month | string | Production month (YYYY-MM) |
-| quantity_tons_needed | double | Required quantity for production |
+| required_tons | int | Required quantity for production |
 | product_line | string | Packaging Film, Shrink Wrap, or Containers |
 | priority | string | Production priority level |
+| confidence_pct | int | Demand-forecast confidence |
 
 ### `supplier_quotes`
 
@@ -45,7 +50,7 @@ Used for reorder recommendations — finding suppliers with stock and lead times
 | min_order_tons | int | Minimum order quantity |
 | valid_until | string | Quote expiration date |
 
-### Useful Genie Queries
+### Illustrative questions (answered from the tables above)
 
 ```
 "Show all inventory levels with safety stock status"
@@ -54,3 +59,5 @@ Used for reorder recommendations — finding suppliers with stock and lead times
 "What is the production demand for April?"
 "What are the cheapest quotes for HDPE with delivery under 2 weeks?"
 ```
+(These map to the `inventory_levels` / `production_demand` / `supplier_quotes` columns; the agent's
+`get_material_status` tool returns the summary form. Direct table Q&A would need a Genie/table tool.)

@@ -14,16 +14,17 @@ Monitor inventory levels, detect stockout risks, and recommend reorder actions f
 3. **Assess risk** → Apply alert thresholds
 4. **Recommend reorder** → Quantity, supplier, urgency
 
-## Step 1: Query Inventory Data (Genie Space)
+## Step 1: Check Inventory (`get_material_status`)
 
-Ask the Genie Space:
+Call the UC function tool for a per-material summary:
 
-| Question | What You Learn |
-|----------|---------------|
-| "Show all inventory levels with safety stock" | Full picture across all materials and warehouses |
-| "What materials are below safety stock?" | CRITICAL items needing immediate action |
-| "What is the days of supply for [MATERIAL]?" | How long until stockout at current consumption |
-| "Show inventory for [WAREHOUSE]" | Site-specific stock levels |
+```
+get_material_status(material="HDPE")
+```
+
+Returns **total on-hand inventory (tons)**, the cheapest recent quote, and next-month demand. Safety-stock and reorder-policy thresholds come from the **AI Search "Procurement Playbook"** (managed MCP over `procurement_doc_chunks_index`).
+
+> Note: `get_material_status` returns the **aggregate** on-hand figure. Per-warehouse detail and `days_of_supply` live in the `inventory_levels` table below — surface them directly only if a table/Genie tool is wired into the agent.
 
 ### Key Columns in `inventory_levels`
 
@@ -34,22 +35,22 @@ Ask the Genie Space:
 | `quantity_tons` | Current stock on hand |
 | `safety_stock_tons` | Minimum acceptable stock level |
 | `days_of_supply` | Days until stockout at current consumption rate |
+| `reorder_point_tons` | On-hand level that triggers a replenishment PO |
 
 ## Step 2: Check Production Demand
 
-Ask the Genie Space:
-- "What is the production demand for next month?"
-- "What materials do we need for [MONTH] production?"
+`get_material_status` already returns next-month demand for the material. For the fuller multi-month picture, the `production_demand` table has:
 
 ### Key Columns in `production_demand`
 
 | Column | Description |
 |--------|-------------|
 | `material` | HDPE, LDPE, or PP |
-| `month` | Production month (YYYY-MM) |
-| `quantity_tons_needed` | How much is required |
+| `production_month` | Production month (YYYY-MM) |
+| `required_tons` | How much is required |
 | `product_line` | Packaging Film, Shrink Wrap, or Containers |
 | `priority` | Production priority level |
+| `confidence_pct` | Demand-forecast confidence |
 
 ## Step 3: Apply Alert Thresholds
 

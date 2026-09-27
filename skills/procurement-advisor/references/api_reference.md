@@ -1,8 +1,10 @@
 # API Reference — Procurement Data Sources
 
-## 1. Genie Space (Managed MCP)
+## 1. Internal data — `get_material_status` (UC function via UC Functions MCP)
 
-Natural language SQL over 4 procurement tables in Unity Catalog (`jywu.agent_mcp`).
+The UC function `jywu.jywu_mfg_agent.get_material_status(material)` summarizes the four
+procurement tables below (returns total on-hand inventory, cheapest recent quote, next-month
+demand). Company policy comes from the **AI Search Playbook** over `procurement_doc_chunks_index`.
 
 ### Tables
 
@@ -24,23 +26,25 @@ Current warehouse stock levels.
 
 | Column | Type | Description |
 |--------|------|-------------|
+| snapshot_date | date | Snapshot date of the reading |
 | material | string | HDPE, LDPE, or PP |
 | warehouse | string | Houston or Chicago |
-| quantity_tons | double | Current stock on hand |
-| safety_stock_tons | double | Minimum acceptable stock level |
+| quantity_tons | int | Current stock on hand |
+| safety_stock_tons | int | Minimum acceptable stock level |
 | days_of_supply | int | Days until stockout at current consumption |
-| last_updated | string | Last update timestamp |
+| reorder_point_tons | int | On-hand level that triggers a replenishment PO |
 
 #### `production_demand`
 Upcoming material requirements by month.
 
 | Column | Type | Description |
 |--------|------|-------------|
+| production_month | string | Production month (YYYY-MM) |
 | material | string | HDPE, LDPE, or PP |
-| month | string | Production month (YYYY-MM) |
-| quantity_tons_needed | double | Required quantity |
+| required_tons | int | Required quantity |
 | product_line | string | Packaging Film, Shrink Wrap, or Containers |
 | priority | string | Production priority level |
+| confidence_pct | int | Demand-forecast confidence |
 
 #### `purchase_history`
 Past procurement decisions with outcome labels.
@@ -75,8 +79,8 @@ Key tools used:
 
 ## 3. Pricing MCP Server
 
-**App:** `mcp-jywu-pricing`
-**Endpoint:** `(set after deployment — see app.yaml env vars)`
+**App:** `mcp-jywu-pricing` (FastMCP → Model Serving endpoint `jywu-pricing-model`)
+**Governed as:** UC MCP Service `jywu.jywu_mfg_agent.pricing` (reached over `…/ai-gateway/mcp-services/…`)
 
 ### `predict_deal_quality`
 

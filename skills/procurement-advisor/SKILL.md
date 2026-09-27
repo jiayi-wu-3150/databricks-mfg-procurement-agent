@@ -9,43 +9,46 @@ Decision framework for PE resin purchasing that combines all 3 MCP data sources 
 
 ## Workflow Overview
 
-1. **Check internal data** → Inventory, demand, quotes, purchase history (Genie Space)
-2. **Check oil market** → Current price and trend (EIA MCP)
-3. **Evaluate the deal** → ML prediction on deal quality (Pricing MCP)
-4. **Synthesize recommendation** → Combine all signals
+1. **Check internal data** → on-hand inventory, cheapest recent quote, next-month demand (`get_material_status` UC function)
+2. **Check oil market** → current price and trend (EIA oil tools)
+3. **Evaluate the deal** → ML prediction on deal quality (`predict_deal_quality`)
+4. **Check policy** → approval thresholds, preferred suppliers, price-lock/MOQ (AI Search playbook)
+5. **Synthesize recommendation** → combine all signals
 
-## Step 1: Check Internal Data (Genie Space)
+## Step 1: Check Internal Data (`get_material_status`)
 
-Query the Genie Space (managed MCP) for context. Ask these questions:
+Call the UC function tool (governed, exposed via the UC Functions MCP `/api/2.0/mcp/functions/jywu/jywu_mfg_agent`):
 
-| Question | Purpose |
-|----------|---------|
-| "What is the current inventory for [MATERIAL]?" | Check stock levels and days of supply |
-| "What are the active quotes for [MATERIAL]?" | See who's quoting and at what price |
-| "What is the production demand for [MATERIAL] next month?" | Understand quantity needed and urgency |
-| "Show purchase history for [MATERIAL] with outcomes" | See what prices were good/bad deals historically |
+```
+get_material_status(material="HDPE")
+```
 
-### Key Tables
+Returns a concise summary: **total on-hand inventory (tons)**, **cheapest recent supplier quote** (supplier + $/ton), and **next-month demand (tons)**.
+
+For company policy — approval thresholds, preferred suppliers, price-lock/MOQ clauses, safety-stock rules — retrieve from the **AI Search "Procurement Playbook"** (managed MCP over `procurement_doc_chunks_index`).
+
+### Underlying tables (for reference)
+
+`get_material_status` reads these UC tables in `jywu.jywu_mfg_agent`:
 
 | Table | Key Columns |
 |-------|-------------|
-| `supplier_quotes` | supplier, material, price_usd_ton, lead_time_days, min_order_tons, valid_until |
-| `inventory_levels` | material, warehouse, quantity_tons, safety_stock_tons, days_of_supply |
-| `production_demand` | material, month, quantity_tons_needed, product_line, priority |
-| `purchase_history` | material, supplier, price_usd_ton, oil_price_at_purchase, outcome (Great Buy / Good Buy / Neutral / Overpaid) |
+| `supplier_quotes` | quote_date, supplier, material, price_usd_ton, lead_time_days, min_order_tons, valid_until |
+| `inventory_levels` | snapshot_date, material, warehouse, quantity_tons, safety_stock_tons, days_of_supply, reorder_point_tons |
+| `production_demand` | production_month, material, required_tons, product_line, priority, confidence_pct |
+| `purchase_history` | purchase_date, material, supplier, quantity_tons, price_usd_ton, oil_price_at_purchase, price_vs_30d_avg_pct, outcome (Great Buy / Good Buy / Neutral / Overpaid) |
 
 ### Historical Price Context
 
-From `purchase_history`, calculate the 30-day average price for the material. Then compute:
+`purchase_history.price_vs_30d_avg_pct` is the price vs. the trailing 30-day average. For a **new** proposed purchase, compute it the same way:
 ```
 price_vs_30d_avg_pct = ((proposed_price - avg_price) / avg_price) * 100
 ```
+This is a required input for the ML model in Step 3.
 
-This is needed as input for the ML model in Step 3.
+## Step 2: Check Oil Market (EIA oil tools)
 
-## Step 2: Check Oil Market (EIA MCP)
-
-**App:** `mcp-jywu-eia-oil`
+**Source:** UC MCP Service `jywu.jywu_mfg_agent.eia_oil`
 
 ```
 get_current_oil_price(product="WTI")
@@ -57,9 +60,9 @@ Extract:
 - `direction` — rising / falling / stable
 - `pct_change` — magnitude of trend
 
-## Step 3: Evaluate the Deal (Pricing MCP)
+## Step 3: Evaluate the Deal (`predict_deal_quality`)
 
-**App:** `mcp-jywu-pricing`
+**Source:** UC MCP Service `jywu.jywu_mfg_agent.pricing` (backed by the `mcp-jywu-pricing` app → Model Serving endpoint `jywu-pricing-model`)
 
 ```
 predict_deal_quality(

@@ -1,7 +1,8 @@
 # API Reference — EIA Crude Oil MCP Server
 
-**App:** `mcp-jywu-eia-oil`
-**Endpoint:** `(set after deployment — see app.yaml env vars)`
+**App:** `mcp-jywu-eia-oil` (FastMCP)
+**Governed as:** UC MCP Service `jywu.jywu_mfg_agent.eia_oil`
+**Reached over:** the internal `…/ai-gateway/mcp-services/jywu.jywu_mfg_agent.eia_oil` path (not the public app URL)
 
 ## Tools
 

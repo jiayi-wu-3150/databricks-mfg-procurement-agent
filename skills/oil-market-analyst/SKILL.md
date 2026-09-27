@@ -23,9 +23,11 @@ Analyze crude oil prices and market trends to inform procurement timing decision
 
 Default to **WTI** unless the user specifies Brent.
 
-## Step 2: Call EIA MCP Server
+## Step 2: Call the EIA oil tools
 
-**App:** `mcp-jywu-eia-oil`
+**Source:** UC MCP Service `jywu.jywu_mfg_agent.eia_oil` (backed by the `mcp-jywu-eia-oil`
+FastMCP app; consumed over the internal `/ai-gateway/mcp-services/…` path). Tools:
+`get_current_oil_price`, `get_oil_price_history`, `get_oil_price_trend`.
 
 ### get_current_oil_price
 
