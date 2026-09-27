@@ -1,12 +1,12 @@
-"""Phase 2 — generate synthetic procurement data on the fevm workspace.
+"""Generate synthetic procurement data.
 
 Self-contained: creates the schema, the 4 core UC tables, and the
 `procurement_docs` table (AI Search "Procurement Playbook" source) via the
-Serverless Starter Warehouse using the Databricks SQL Statement Execution API.
+SQL warehouse using the Databricks SQL Statement Execution API.
 
 Tiny, deterministic dataset (seed 42) — no Spark/cluster needed.
 
-Run:  DATABRICKS_CONFIG_PROFILE=fevm-serverless-stable-r4umw1 uv run python setup/gen_data_fevm.py
+Run:  DATABRICKS_CONFIG_PROFILE=azure-demo uv run python -m setup.gen_data
 """
 
 import random

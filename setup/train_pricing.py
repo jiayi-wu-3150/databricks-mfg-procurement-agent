@@ -1,4 +1,4 @@
-"""Phase 4 — train, register & deploy the ML pricing model on fevm.
+"""Train, register & deploy the ML pricing model.
 
 Standalone (no notebook/dbutils): loads purchase_history via the SQL warehouse,
 trains a GradientBoostingClassifier locally, logs to a SEPARATE MLflow experiment
@@ -7,7 +7,9 @@ registers to UC, and creates/updates the `jywu-pricing-model` serving endpoint.
 
 Endpoint readiness is NOT awaited here (can take ~5-10 min); poll separately.
 
-Run:  DATABRICKS_CONFIG_PROFILE=fevm-serverless-stable-r4umw1 uv run python -m setup.train_pricing_fevm
+Run:  DATABRICKS_CONFIG_PROFILE=azure-demo \
+      uv run --with scikit-learn --with azure-storage-file-datalake --with azure-identity \
+      python -m setup.train_pricing
 """
 
 import mlflow

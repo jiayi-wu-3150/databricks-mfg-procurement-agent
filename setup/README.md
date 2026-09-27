@@ -11,8 +11,8 @@ embedding model). Run each with the workspace profile, e.g. `DATABRICKS_CONFIG_P
 |---|------|---------|---------|
 | 1 | Config | edit `setup/config.py` | workspace/catalog/schema/warehouse/VS/embedding |
 | 2 | Auth + Lakebase + MLflow | `uv run quickstart --profile <p> --lakebase-create-new jywu-mfg-agent` | `.env`, experiment, Lakebase project |
-| 3 | Data (5 tables) | `uv run python -m setup.gen_data_fevm` | supplier_quotes, inventory_levels, production_demand, purchase_history, procurement_docs |
-| 4 | Pricing model + endpoint | `uv run --with scikit-learn --with azure-storage-file-datalake --with azure-identity python -m setup.train_pricing_fevm` | UC model `pricing_model` + serving endpoint `jywu-pricing-model` (lean pip_requirements) |
+| 3 | Data (5 tables) | `uv run python -m setup.gen_data` | supplier_quotes, inventory_levels, production_demand, purchase_history, procurement_docs |
+| 4 | Pricing model + endpoint | `uv run --with scikit-learn --with azure-storage-file-datalake --with azure-identity python -m setup.train_pricing` | UC model `pricing_model` + serving endpoint `jywu-pricing-model` (lean pip_requirements) |
 | 5 | Policy PDFs → Volume | `uv run --with fpdf2 python -m setup.gen_policy_docs` | volume `policy_docs` + 8 PDFs |
 | 6 | AI-functions ingestion | `uv run python -m setup.build_chunks_index` | `procurement_doc_chunks` (parse→prep_search) + VS index `procurement_doc_chunks_index` |
 | 7 | MCP apps | see **MCP apps** below | apps `mcp-jywu-eia-oil`, `mcp-jywu-pricing` |
@@ -20,6 +20,7 @@ embedding model). Run each with the workspace profile, e.g. `DATABRICKS_CONFIG_P
 | 9 | UC governance | `CONNECTOR_SP_CLIENT_ID=… CONNECTOR_SP_SECRET=… uv run python -m setup.create_uc_governance` | schema-scoped connections, UC MCP Services (eia_oil/pricing), UC function `get_material_status`, EXECUTE grants |
 | 10 | Deploy agent | `databricks bundle deploy && databricks bundle run agent_openai_advanced` | app `mfg-procurement-agent` (no `uv.lock`; no stale `.databricks/`) |
 | 11 | Grants (agent SP) | warehouse `CAN_USE`, UC `USE/SELECT` on schema, Lakebase perms | `uv run python scripts/grant_lakebase_permissions.py <sp> --memory-type openai` |
+| 12 | UC Skills (Beta) | `uv run python -m setup.create_uc_skills` | publishes `./skills/` as UC Skills `oil-market-analyst`/`procurement-advisor`/`inventory-monitor` (create → Files-API upload → finalize) + grants the agent SP `READ_VOLUME`. Run after step 10 so the grant lands; idempotent, and skills load live so re-running to update content needs no redeploy. Requires the UC Skills account-console preview. |
 
 The agent (`databricks.yml` `config.env`) then points at: the UC MCP Services
 (`MCP_EIA_URL`/`MCP_PRICING_URL` → `…/ai-gateway/mcp-services/jywu.jywu_mfg_agent.{eia_oil,pricing}`),
@@ -50,6 +51,6 @@ databricks service-principal-secrets-proxy create <sp-id>                   # ->
 ## Notes / gotchas
 - **No `uv.lock`** in the agent deploy (build's uv version trips `--locked`); it's gitignored.
 - **Clear `.databricks/`** if copied from another workspace (stale bundle state → CLI panic).
-- **Model serving image**: keep `pip_requirements` lean in `train_pricing_fevm.py` (else the
+- **Model serving image**: keep `pip_requirements` lean in `train_pricing.py` (else the
   serving container drags PySpark/150+ pkgs and the build stalls).
 - Azure UC managed storage is `abfss://` — training needs `azure-storage-file-datalake` + `azure-identity`.
