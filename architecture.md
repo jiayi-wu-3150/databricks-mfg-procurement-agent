@@ -3,7 +3,8 @@
 An AI procurement advisor for a plastics manufacturer buying polyethylene resins
 (HDPE, LDPE, PP). It helps a procurement lead decide **whether to buy or wait, how
 much, and from which supplier**, by combining internal data, live market data, an
-ML deal-quality model, and company policy — all as tools the LLM orchestrates.
+ML deal-quality model, and company policy — all as tools the LLM orchestrates,
+with governed **UC Skills** guiding how it uses them.
 
 - **Workspace:** `adb-984752964297111.11.azuredatabricks.net` (Azure) · profile `azure-demo`
 - **Unity Catalog:** `jywu.jywu_mfg_agent`
@@ -27,6 +28,7 @@ ML deal-quality model, and company policy — all as tools the LLM orchestrates.
                                      │ 3. Pricing              (UC MCP Service) │──▶ Model Serving: jywu-pricing-model
                                      │ 4. AI Search            (managed MCP)    │──▶ VS index (parsed-PDF chunks)
                                      └──────────────────────────────────────────┘
+       + UC Skills (load_skill) ─▶ managed skills MCP ─▶ governed SKILL.md guidance in the schema
 
    session memory ──▶ Lakebase (Postgres)              traces ──▶ MLflow experiment
 ```
@@ -38,6 +40,9 @@ ML deal-quality model, and company policy — all as tools the LLM orchestrates.
 4. The LLM synthesizes a grounded buy/wait recommendation.
 5. Conversation state is persisted to **Lakebase**; the full trace is logged to **MLflow**.
 
+> The model may also **load a governed UC Skill** (`load_skill`) — a `SKILL.md` guidance sheet — when
+> a question matches one, and follow its approach while calling the tools above (see §3.5).
+
 ---
 
 ## 2. The agent
@@ -46,8 +51,8 @@ ML deal-quality model, and company policy — all as tools the LLM orchestrates.
 |---|---|
 | Framework | OpenAI Agents SDK (`agents.Runner`) inside MLflow `mlflow.genai.agent_server` (`@invoke` / `@stream`) |
 | LLM | `databricks-claude-sonnet-4-5` via **direct Foundation Model serving** (`AsyncDatabricksOpenAI`, `chat_completions`). Env-driven: `USE_AI_GATEWAY=false` on Azure; set `true` (+ a `system.ai.*` model) on workspaces where the FM path is disabled. |
-| Instructions | Procurement-advisor system prompt that folds in three "skills" (oil-market-analyst, procurement-advisor, inventory-monitor). |
-| Resilience | `connect_healthy_mcp_servers` health-checks each MCP at request time and drops any that are unavailable, so one down tool can't crash a turn. |
+| Instructions | Procurement-advisor system prompt that describes the tools and how to combine them. The three domain playbooks (oil-market-analyst, procurement-advisor, inventory-monitor) are now governed **UC Skills** the model loads live via the skills MCP (see §3.5). |
+| Resilience | `connect_healthy_mcp_servers` health-checks each MCP at request time (**concurrently**, via `asyncio.gather`) and drops any that are unavailable, so one down tool can't crash a turn — and the setup cost is the slowest server, not the sum. |
 | Key file | `agent_server/agent.py` |
 
 ---
@@ -145,6 +150,37 @@ pipeline; the **query** row is what happens per request.*
 - (The earlier `procurement_docs_index` — a direct index over the `procurement_docs` table — is
   superseded by this PDF-sourced chunks index.)
 
+### 3.5 UC Skills — governed guidance (managed skills MCP, Beta)
+
+```
+load:   agent ─load_skill─▶ UC Skills MCP (/ai-gateway/skills/jywu.jywu_mfg_agent) ─▶ SKILL.md text
+apply:  the loaded guidance enters the model's context → it follows it, calling the §3.1–§3.4 tools
+```
+*A Skill is **not a tool that does work** — it's a loadable **instruction sheet**. The model calls
+`load_skill`, the `SKILL.md` guidance enters its context, and it then follows that guidance using the
+real data tools above.*
+
+- The three domain playbooks are registered as first-class UC securables
+  `jywu.jywu_mfg_agent.{oil-market-analyst, procurement-advisor, inventory-monitor}` (a schema-level
+  **Skill** object; shown under the schema's **Skills** tab). Each is a folder with a `SKILL.md`
+  (frontmatter `name`/`description` + guidance) plus a `references/` file.
+- **Consumed live** over the **managed skills MCP** `…/ai-gateway/skills/jywu.jywu_mfg_agent`
+  (tools `list_skills`, `load_skill`, `get_skill_files`). The agent registers this MCP **filtered to
+  those read tools** — `create_skill`/`update_skill`/`delete_skill` are withheld so the agent can
+  read skills but never modify them. Gated by `SKILLS_MCP_ENABLED`.
+- **Governance:** skills reuse **volume** privileges — the agent SP is granted `READ_VOLUME` on each
+  skill (see §6). Owner can `GRANT`/tag/audit like any securable.
+- **Live updates:** skill content lives in UC and loads on each `load_skill`, so editing a skill and
+  re-publishing (`setup/create_uc_skills.py`) takes effect **with no app redeploy** — only base-prompt
+  changes need a redeploy.
+- **Gotcha (the one that bit us):** a skill must **not hardcode a bare tool name**. The managed UC
+  Functions MCP registers the function under a **namespaced** name
+  (`jywu__jywu_mfg_agent__get_material_status`); a skill saying "call `get_material_status`" makes the
+  model invoke a non-existent bare tool → *"Tool not found"*. Skills/prompt describe tools by
+  capability and defer to the actual toolset. (The EIA/pricing tools use bare names and are unaffected.)
+- **Status:** UC Skills is **Beta** (enable the account-console preview). See the "sync-git-skills"
+  docs; this repo publishes the local `./skills/` folder directly rather than from a marketplace repo.
+
 ---
 
 ## 4. Data layer (`jywu.jywu_mfg_agent`)
@@ -162,7 +198,8 @@ Materials: HDPE, LDPE, PP · Suppliers: ChemCorp, PolySource, AsiaResin, EuroChe
 
 **Other schema securables (all UC-governed under `jywu.jywu_mfg_agent`):** Model `pricing_model`;
 Function `get_material_status`; MCP Services `eia_oil` / `pricing`; schema-scoped Connections
-`eia_conn` / `pricing_conn`; Volume `policy_docs`. (Secrets stay in the workspace scope
+`eia_conn` / `pricing_conn`; Volume `policy_docs`; **Skills** `oil-market-analyst` /
+`procurement-advisor` / `inventory-monitor` (see §3.5). (Secrets stay in the workspace scope
 `mfg-agent/eia-api-key` — a Spark-less app can't consume a UC schema secret; see §6 and §8.)
 
 ---
@@ -204,6 +241,8 @@ STEP 1 — THE AGENT'S OWN CALLS        (all carry the SAME token: SP_agent)
                                                                       needs: EXECUTE on the function
               ── SP_agent token ──▶  AI Search MCP     /api/2.0/mcp/ai-search/…
                                                                       needs: read on the index
+              ── SP_agent token ──▶  UC Skills MCP    /ai-gateway/skills/…
+                                                                      needs: READ_VOLUME on the skills
               ── SP_agent token ──▶  Lakebase (Postgres)             needs: Postgres grants
               ── SP_agent token ──▶  UC MCP Service
                                      /ai-gateway/mcp-services/jywu.jywu_mfg_agent.eia_oil
@@ -233,6 +272,7 @@ STEP 3 — INSIDE THE CUSTOM APPS
 | Agent app SP | `SELECT` | schema tables + the `procurement_doc_chunks_index` (AI Search MCP) |
 | Agent app SP | `EXECUTE` | function `get_material_status` (UC Functions MCP) |
 | Agent app SP | `EXECUTE` | MCP Services `eia_oil`, `pricing` |
+| Agent app SP | `READ_VOLUME` | each Skill (`oil-market-analyst` / `procurement-advisor` / `inventory-monitor`) — skills reuse volume privileges |
 | Agent app SP | `CAN_USE` | the SQL warehouse (if the function/queries route through it) |
 | Agent app SP | Postgres `USAGE`/`CREATE` + table DML | Lakebase schemas (`scripts/grant_lakebase_permissions.py`) |
 | Connector SP | `CAN_USE` | both custom MCP apps (creds live in the connections) |
@@ -284,6 +324,9 @@ MCP servers, so the connection uses **static M2M OAuth** — the connector SP's 
 - **MCP servers:** deployed as separate Databricks Apps (`apps create` + `sync` + `apps deploy`).
 - **Prep runbook:** `setup/README.md` has the full ordered sequence — data, pricing model, policy
   PDFs, AI-functions chunks index, UC governance (connections/services/function), and grants.
+- **UC Skills:** `setup/create_uc_skills.py` publishes the local `./skills/` folder as UC Skills
+  (create → Files-API upload → finalize) and grants the agent SP `READ_VOLUME` on each. Idempotent,
+  and because skills load live it needs **no app redeploy** to pick up edited skill content.
 
 ---
 
@@ -301,3 +344,7 @@ MCP servers, so the connection uses **static M2M OAuth** — the connector SP's 
 | **UC function via the Functions MCP** for internal data | Governed + discoverable; function-qualify the param inside subqueries or it fails under MCP named-arg invocation. |
 | **EIA key stays in a workspace secret scope** | A Spark-less MCP app can't consume a UC schema secret (`dbutils.secrets.get` is notebook/Spark-only; no Apps binding); the workspace scope injects via `valueFrom`. |
 | **AI-functions ingestion** for the Playbook | `ai_parse_document`+`ai_prep_search` over PDFs → chunks → index is the canonical RAG path; verify function `version` options against docs (they move fast). |
+| **UC Skills, loaded live** for domain guidance | Governed `catalog.schema.skill` objects consumed over the managed skills MCP; content loads on each `load_skill`, so editing a skill needs no redeploy. Filter the skills MCP to read tools so the agent can't create/delete. Beta. |
+| **Skills/prompt describe tools by capability** | Never hardcode a bare tool name in a skill or prompt — the managed UC Functions MCP namespaces the function (`jywu__jywu_mfg_agent__get_material_status`), so a hardcoded bare `get_material_status` → *"Tool not found"*. Defer to the actual toolset. |
+| **Concurrent MCP health check** | Connecting the (now 5) MCP servers sequentially paid the sum of their connect latencies every request (~7–9s cold); `asyncio.gather` bounds it to the slowest (~2–3s). |
+| **Name MCP spans in the trace** | MLflow labels the SDK's `MCPListToolsSpanData` "Unknown"; a small guarded monkeypatch after `autolog()` names them `mcp.list_tools: <server>`. Skill *use* shows as a `load_skill` span, distinct from the per-request `mcp.list_tools: uc_skills` connect. |

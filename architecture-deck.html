@@ -279,6 +279,21 @@
       </div>
     </section>
 
+    <!-- 5b -->
+    <section class="slide" data-title="UC Skills" hidden>
+      <div class="wrap">
+        <p class="eyebrow">Governed guidance · Beta</p>
+        <h2>Skills — loaded live from Unity Catalog</h2>
+        <p class="lede">A skill is a loadable <strong>instruction sheet</strong> (<code>SKILL.md</code>), not a tool that does work — the model <code>load_skill</code>s it, then follows its approach using the four tools above.</p>
+        <ul class="clean">
+          <li><strong>Three playbooks as securables</strong> — <code>catalog.schema.skill</code> under the schema's <strong>Skills</strong> tab: oil-market-analyst, procurement-advisor, inventory-monitor.</li>
+          <li><strong>Loaded live</strong> over the managed skills MCP (<code>/ai-gateway/skills/…</code>), filtered to read tools (<code>list_skills</code>, <code>load_skill</code>, <code>get_skill_files</code>) — the agent reads skills but can't create or delete them.</li>
+          <li><strong>Governed &amp; live</strong> — agent SP granted <code>READ_VOLUME</code>; edit a skill and re-publish and it takes effect with <strong>no app redeploy</strong>.</li>
+          <li><strong>Gotcha:</strong> skills describe tools by capability — never hardcode a bare tool name (the UC Functions MCP namespaces it to <code>jywu__jywu_mfg_agent__get_material_status</code>).</li>
+        </ul>
+      </div>
+    </section>
+
     <!-- 6 -->
     <section class="slide" data-title="Data layer" hidden>
       <div class="wrap">

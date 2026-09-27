@@ -16,8 +16,13 @@ and company policy — each exposed as a tool the LLM orchestrates.
 | 3 | `predict_deal_quality` — good/bad deal | **UC MCP Service** `pricing` (FastMCP app `mcp_server_pricing`) → Model Serving |
 | 4 | Procurement Playbook — approval/policy rules | **Managed MCP** → Vector Search index (parsed-PDF chunks) |
 
+Plus **UC Skills** (Beta): three domain playbooks (oil-market-analyst, procurement-advisor,
+inventory-monitor) registered as governed `catalog.schema.skill` objects and loaded live by the agent
+via the managed skills MCP (`/ai-gateway/skills/…`). Publish with `setup/create_uc_skills.py`; details
+in [architecture.md §3.5](architecture.md).
+
 **Stack:** OpenAI Agents SDK + MLflow `agent_server` · `databricks-claude-sonnet-4-5` (direct FM serving) ·
-Lakebase session memory · MLflow tracing · Unity Catalog `jywu.jywu_mfg_agent`.
+Lakebase session memory · MLflow tracing · UC Skills · Unity Catalog `jywu.jywu_mfg_agent`.
 Setup scripts are in [`setup/`](setup); deploy with `databricks bundle deploy && databricks bundle run agent_openai_advanced`.
 
 ---
