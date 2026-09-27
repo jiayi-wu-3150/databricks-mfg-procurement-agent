@@ -14,15 +14,14 @@ Monitor inventory levels, detect stockout risks, and recommend reorder actions f
 3. **Assess risk** → Apply alert thresholds
 4. **Recommend reorder** → Quantity, supplier, urgency
 
-## Step 1: Check Inventory (`get_material_status`)
+## Step 1: Check Inventory (material-status tool)
 
-Call the UC function tool for a per-material summary:
+Use the **material-status tool** in your toolset for a per-material summary: **total on-hand
+inventory (tons)**, the cheapest recent quote, and next-month demand.
 
-```
-get_material_status(material="HDPE")
-```
-
-Returns **total on-hand inventory (tons)**, the cheapest recent quote, and next-month demand. Safety-stock and reorder-policy thresholds come from the **AI Search "Procurement Playbook"** (managed MCP over `procurement_doc_chunks_index`).
+> The underlying UC function is `get_material_status(material)`, but the UC Functions MCP registers
+> it under a **namespaced** tool name (e.g. `jywu__jywu_mfg_agent__get_material_status`). Call
+> whichever material-status tool is actually in your toolset — don't assume the bare name. Safety-stock and reorder-policy thresholds come from the **AI Search "Procurement Playbook"** (managed MCP over `procurement_doc_chunks_index`).
 
 > Note: `get_material_status` returns the **aggregate** on-hand figure. Per-warehouse detail and `days_of_supply` live in the `inventory_levels` table below — surface them directly only if a table/Genie tool is wired into the agent.
 

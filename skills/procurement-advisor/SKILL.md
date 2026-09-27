@@ -15,15 +15,16 @@ Decision framework for PE resin purchasing that combines all 3 MCP data sources 
 4. **Check policy** → approval thresholds, preferred suppliers, price-lock/MOQ (AI Search playbook)
 5. **Synthesize recommendation** → combine all signals
 
-## Step 1: Check Internal Data (`get_material_status`)
+## Step 1: Check Internal Data (material-status tool)
 
-Call the UC function tool (governed, exposed via the UC Functions MCP `/api/2.0/mcp/functions/jywu/jywu_mfg_agent`):
+Use the **material-status tool** available in your toolset — a governed UC function (exposed via the
+UC Functions MCP) that returns, for one material, a concise summary: **total on-hand inventory
+(tons)**, **cheapest recent supplier quote** (supplier + $/ton), and **next-month demand (tons)**.
 
-```
-get_material_status(material="HDPE")
-```
-
-Returns a concise summary: **total on-hand inventory (tons)**, **cheapest recent supplier quote** (supplier + $/ton), and **next-month demand (tons)**.
+> The underlying UC function is `get_material_status(material)`, but the UC Functions MCP registers
+> it under a **namespaced** tool name (e.g. `jywu__jywu_mfg_agent__get_material_status`). Call
+> whichever material-status tool is actually in your toolset — do **not** assume the bare name
+> `get_material_status`, and pass the material (e.g. `HDPE`) as the argument.
 
 For company policy — approval thresholds, preferred suppliers, price-lock/MOQ clauses, safety-stock rules — retrieve from the **AI Search "Procurement Playbook"** (managed MCP over `procurement_doc_chunks_index`).
 
