@@ -21,13 +21,13 @@ ML deal-quality model, and company policy — all as tools the LLM orchestrates.
                           └───────┬───────────────────────┬───────────────┘
                                   │ LLM (plan/act)         │ tools
                                   ▼                        ▼
-                   databricks-claude-sonnet-4-5   ┌────────────────────────────┐
-                   (Foundation Model serving)     │ 1. get_material_status      │──▶ SQL Warehouse ──▶ UC tables
-                                                  │    (@function_tool)         │
-                                                  │ 2. EIA oil MCP  (app)       │──▶ api.eia.gov (WTI/Brent)
-                                                  │ 3. Pricing MCP  (app)       │──▶ Model Serving: jywu-pricing-model
-                                                  │ 4. AI Search playbook (mgd) │──▶ Vector Search index
-                                                  └────────────────────────────┘
+                   databricks-claude-sonnet-4-5   ┌─────────────────────────────────┐
+                   (Foundation Model serving)     │ 1. get_material_status           │──▶ UC Functions MCP ──▶ UC tables
+                                                  │    (UC function, governed)       │
+                                                  │ 2. EIA oil  (UC MCP Service)     │──▶ api.eia.gov (WTI/Brent)
+                                                  │ 3. Pricing  (UC MCP Service)     │──▶ Model Serving: jywu-pricing-model
+                                                  │ 4. AI Search (managed MCP)       │──▶ VS index (parsed-PDF chunks)
+                                                  └─────────────────────────────────┘
                                   │ session memory                │ traces
                                   ▼                               ▼
                         Lakebase (Postgres)                 MLflow experiment
