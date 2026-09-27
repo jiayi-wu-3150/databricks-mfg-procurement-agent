@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from contextlib import AsyncExitStack
@@ -41,7 +42,38 @@ set_default_openai_api("chat_completions")
 set_trace_processors([])  # only use mlflow for trace processing
 mlflow.openai.autolog()
 logging.getLogger("mlflow.utils.autologging_utils").setLevel(logging.ERROR)
+
+
+def _name_mcp_spans() -> None:
+    """Give MCP spans real names in the MLflow trace.
+
+    The OpenAI Agents SDK emits an ``MCPListToolsSpanData`` (fields: ``server``, ``type``) with no
+    ``name``, so MLflow's ``_get_span_name`` falls through to "Unknown" — that's every one of the
+    per-server list_tools spans (one per MCP server). Wrap it to name those by their server, and to
+    fall back to the span-data class name for any other unnamed type. Cosmetic (trace readability);
+    guarded so a future MLflow refactor can't break app import.
+    """
+    try:
+        from mlflow.openai import _agent_tracer
+
+        _orig = _agent_tracer._get_span_name
+
+        def _named(span_data):
+            name = _orig(span_data)
+            if name != "Unknown":
+                return name
+            server = getattr(span_data, "server", None)
+            if server is not None:
+                return f"mcp.list_tools: {server}"
+            return type(span_data).__name__.removesuffix("SpanData") or "Unknown"
+
+        _agent_tracer._get_span_name = _named
+    except Exception:  # never let a tracing-cosmetics tweak break startup
+        logger.warning("Could not install MCP span namer; traces will show 'Unknown'.", exc_info=True)
+
+
 logger = logging.getLogger(__name__)
+_name_mcp_spans()
 
 # Default to the direct FM serving model on Azure; override via env per workspace.
 LLM_MODEL = os.environ.get("AGENT_LLM_MODEL", "databricks-claude-sonnet-4-5")
@@ -144,17 +176,25 @@ async def connect_healthy_mcp_servers(
 
     Returns (healthy_servers, unavailable_names).
     """
+    async def _connect(server: McpServer) -> McpServer:
+        connected = await stack.enter_async_context(server)
+        await connected.list_tools()  # forces the connectivity + authorization check now
+        return connected
+
+    # Connect all servers concurrently — a sequential loop paid the sum of every server's
+    # connect+list latency on each request (custom-app MCPs can be seconds when cold); gather
+    # bounds it to the slowest server instead.
+    results = await asyncio.gather(*(_connect(s) for s in servers), return_exceptions=True)
+
     healthy: list[McpServer] = []
     unavailable: list[str] = []
-    for server in servers:
+    for server, result in zip(servers, results):
         name = getattr(server, "name", "MCP server")
-        try:
-            connected = await stack.enter_async_context(server)
-            await connected.list_tools()  # forces the connectivity + authorization check now
-            healthy.append(connected)
-        except Exception:
-            logger.warning("MCP server %r unavailable; continuing without it.", name, exc_info=True)
+        if isinstance(result, BaseException):
+            logger.warning("MCP server %r unavailable; continuing without it.", name, exc_info=result)
             unavailable.append(name)
+        else:
+            healthy.append(result)
     return healthy, unavailable
 
 
