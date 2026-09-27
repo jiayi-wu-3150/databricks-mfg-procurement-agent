@@ -55,6 +55,16 @@ ML deal-quality model, and company policy — all as tools the LLM orchestrates.
 ## 3. The four tools
 
 ### 3.1 `get_material_status(material)` — internal data (UC function via UC Functions MCP)
+
+```
+                ┌─ UC Functions MCP ───────┐    ┌─ get_material_status ┐    ┌─ UC tables ┐
+                │ managed · built-in       │    │ SQL function (UDF)   │    │ inventory  │
+agent ─EXECUTE─▶│ /api/2.0/mcp/functions/… │ ─▶ │ EXECUTE-governed     │ ─▶ │ quotes     │
+                └──────────────────────────┘    └──────────────────────┘    │ demand     │
+                                                                            └────────────┘
+```
+*Managed MCP — no app, no connection, no service; the platform hosts the path.*
+
 - A **UC SQL function** `jywu.jywu_mfg_agent.get_material_status(material)` that queries the UC
   tables (inventory / quotes / demand) and returns a concise summary: on-hand inventory,
   cheapest recent supplier quote, and next-month demand.
@@ -66,6 +76,21 @@ ML deal-quality model, and company policy — all as tools the LLM orchestrates.
   the MCP's named-arg invocation with `UNRESOLVED_COLUMN`.
 
 ### 3.2 EIA oil-price MCP — `mcp-jywu-eia-oil` (custom Databricks App)
+
+```
+       ┌─ UC MCP Service ┐    ┌─ UC Connection ──────┐    ┌─ Databricks App ───────┐
+       │ eia_oil         │    │ eia_conn             │    │ mcp-jywu-eia-oil       │
+agent  │ governed handle │ ─▶ │ app URL + M2M        │ ─▶ │ FastMCP server         │ ─▶ api.eia.gov
+─EXEC─▶│ /ai-gateway/…   │    │ creds = SP_connector │    │ + EIA_API_KEY (secret) │    (WTI/Brent)
+       └─────────────────┘    │ token /oidc/v1/token │    └────────────────────────┘
+                              └──────────────────────┘
+       what the agent calls          reach + auth                  what runs
+```
+*Three UC objects chain: the **Service** (what the agent is granted `EXECUTE` on) references the
+**Connection** (the app URL + the `SP_connector` M2M credential), which points at the **App** (the
+running server). The agent calls the Service over the internal path; UC uses the Connection's creds
+to authenticate into the App.*
+
 - A **FastMCP** server hosted as its own Databricks App. Tools: `get_current_oil_price`,
   `get_oil_price_history`, `get_oil_price_trend`. Wraps the U.S. EIA API (WTI/Brent spot prices).
 - **Auth:** `EIA_API_KEY` injected from a Databricks **secret** (`mfg-agent/eia-api-key`) via
@@ -76,6 +101,18 @@ ML deal-quality model, and company policy — all as tools the LLM orchestrates.
 - **Why it matters:** resin prices track crude oil with a lag, so oil direction informs buy timing.
 
 ### 3.3 Pricing MCP — `mcp-jywu-pricing` (custom Databricks App)
+
+```
+       ┌─ UC MCP Service ┐    ┌─ UC Connection ──────┐    ┌─ Databricks App ─────┐
+agent  │ pricing         │    │ pricing_conn         │    │ mcp-jywu-pricing     │ ─▶ Model Serving
+─EXEC─▶│ governed handle │ ─▶ │ app URL + M2M        │ ─▶ │ FastMCP server       │    jywu-pricing-model
+       │ /ai-gateway/…   │    │ creds = SP_connector │    │ predict_deal_quality │    (scale-to-zero)
+       └─────────────────┘    └──────────────────────┘    └──────────────────────┘
+       what the agent calls          reach + auth                 what runs
+```
+*Same three-object chain as §3.2; the App's tool calls a **Model Serving endpoint** (a fourth hop),
+which needs the pricing app's SP granted `CAN_QUERY` on that endpoint.*
+
 - A **FastMCP** app exposing `predict_deal_quality`, which calls the **Model Serving endpoint**
   `jywu-pricing-model`.
 - **Model:** a `GradientBoostingClassifier` trained on `purchase_history` (good-deal vs bad-deal),
@@ -88,6 +125,16 @@ ML deal-quality model, and company policy — all as tools the LLM orchestrates.
   `CAN_QUERY` on the endpoint, and the endpoint is scale-to-zero (first prediction after idle is slow).
 
 ### 3.4 AI Search "Procurement Playbook" — managed MCP (AI-functions ingestion)
+
+```
+ingest:  policy PDFs ─▶ ai_parse_document ─▶ ai_prep_search ─▶ procurement_doc_chunks ─▶ VS index
+         (volume)       (parse)              (semantic chunk)  (Delta · CDF on)          …_chunks_index
+
+query:   agent ─▶ AI Search MCP (managed · /api/2.0/mcp/ai-search/…) ─▶ VS index
+```
+*Managed MCP like §3.1 — no app/connection/service. The **ingest** row is the one-time build
+pipeline; the **query** row is what happens per request.*
+
 - Built with the **AI-functions RAG pipeline**: policy **PDFs** in the volume `policy_docs` →
   `ai_parse_document` → `ai_prep_search` (semantic chunking) → table `procurement_doc_chunks`
   (Change Data Feed on) → **Delta Sync Vector Search index** `procurement_doc_chunks_index`
