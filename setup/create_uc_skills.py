@@ -36,6 +36,7 @@ api = w.api_client
 SCHEMA_FQN = f"{CATALOG}.{SCHEMA}"
 SKILLS_API = "/api/2.1/unity-catalog/skills"
 FILES_API = "/api/2.0/fs/files"
+AGENT_APP = "mfg-procurement-agent"  # its SP gets READ_VOLUME so the deployed agent can load skills
 SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
 # Skill leaf: lowercase alphanumerics + inner hyphens, up to 64 chars (per docs).
 LEAF_RE = re.compile(r"^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$")
@@ -65,6 +66,20 @@ def publish(leaf: str, bundle: dict[str, bytes]) -> str:
     # 3) finalize — reads SKILL.md frontmatter (name/description)
     api.do("POST", f"{SKILLS_API}/{SCHEMA_FQN}.{leaf}/finalize")
     return action
+
+
+def grant_agent_read(leaves: list[str]) -> None:
+    """Grant the agent app's SP READ_VOLUME on each skill (skills reuse volume privileges),
+    so the deployed agent can list/load them over the managed skills MCP."""
+    try:
+        agent_sp = w.apps.get(AGENT_APP).service_principal_client_id
+    except Exception as e:
+        print(f"  (skip grants — app {AGENT_APP} not found: {str(e)[:80]})")
+        return
+    for leaf in leaves:
+        api.do("PATCH", f"/api/2.1/unity-catalog/permissions/skill/{SCHEMA_FQN}.{leaf}",
+               body={"changes": [{"principal": agent_sp, "add": ["READ_VOLUME"]}]})
+    print(f"  ✓ READ_VOLUME on {len(leaves)} skill(s) -> agent SP")
 
 
 def list_skills():
@@ -97,6 +112,10 @@ def main():
         except Exception as e:  # keep one bad bundle from blocking the rest
             errors.append(leaf)
             print(f"  error    {leaf}: {str(e)[:140]}")
+
+    published = [d.name for d in skill_dirs if d.name not in errors and LEAF_RE.match(d.name)]
+    if published:
+        grant_agent_read(published)
 
     print(f"\nDone. UC Skills under {SCHEMA_FQN} (see the schema's Skills tab).")
     if errors:

@@ -10,6 +10,7 @@ from agents.tracing import set_trace_processors
 from databricks.sdk import WorkspaceClient
 from databricks_openai import AsyncDatabricksOpenAI
 from databricks_openai.agents import AsyncDatabricksSession, McpServer
+from agents.mcp import create_static_tool_filter
 from fastapi import HTTPException
 from mlflow.genai.agent_server import invoke, stream
 from mlflow.types.responses import (
@@ -100,6 +101,19 @@ def build_mcp_servers(workspace_client: WorkspaceClient) -> list[McpServer]:
         name="uc_functions",
         workspace_client=workspace_client,
     ))
+
+    # UC Skills (Beta) — governed catalog.schema.skill objects, loaded live over the
+    # managed skills MCP (docs: "load a schema live"). Restricted to the read tools so the
+    # agent can list/load skills but never create/update/delete them.
+    if os.environ.get("SKILLS_MCP_ENABLED", "true").lower() == "true":
+        servers.append(McpServer(
+            url=f"{host}/ai-gateway/skills/{cat}.{sch}",
+            name="uc_skills",
+            workspace_client=workspace_client,
+            tool_filter=create_static_tool_filter(
+                allowed_tool_names=["list_skills", "load_skill", "get_skill_files"]
+            ),
+        ))
 
     # Custom app MCPs (EIA oil prices, ML pricing) — URLs provided post-deploy via env.
     for env_key, name in [("MCP_EIA_URL", "eia_oil"), ("MCP_PRICING_URL", "pricing")]:
