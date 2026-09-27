@@ -23,7 +23,6 @@ in [architecture.md §3.5](architecture.md).
 
 **Stack:** OpenAI Agents SDK + MLflow `agent_server` · `databricks-claude-sonnet-4-5` (direct FM serving) ·
 Lakebase session memory · MLflow tracing · UC Skills · Unity Catalog `jywu.jywu_mfg_agent`.
-Setup scripts are in [`setup/`](setup); deploy with `databricks bundle deploy && databricks bundle run agent_openai_advanced`.
 
 ---
 
