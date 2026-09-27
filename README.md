@@ -26,6 +26,7 @@ Lakebase session memory · MLflow tracing · UC Skills · Unity Catalog `jywu.jy
 
 ---
 
+# Appendix below
 ## Template reference — Advanced Responses API Agent
 
 This template defines a **stateful** conversational agent app with persistent conversation history, long-running background execution, and stream resumption — all backed by [Databricks Lakebase](https://docs.databricks.com/aws/en/lakebase/). The app comes with a built-in chat UI, but also exposes an API endpoint for invoking the agent so that you can serve your UI elsewhere (e.g. on your website or in a mobile app).
