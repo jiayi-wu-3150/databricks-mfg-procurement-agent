@@ -248,7 +248,6 @@ Azure workspace) and gives you no UC governance. Prefer the UC MCP Service path 
 | Situation | Why the UC MCP Service path is required |
 |---|---|
 | **Restricted app egress** (NCC/Private Link, or workspaces that block outbound to `*.databricksapps.com`) | A URL-calling agent can't reach the public app — you hit `serverless network policy` / connection-refused. The internal path is fetched by the control plane, which isn't subject to the app's egress block. (This was the blocker on the earlier fevm workspace.) |
-| **Supervisor Agent / Agent Bricks** as the caller | These consume tools as **UC MCP Services** (governed securables), not raw app URLs. A custom-code agent can call a URL directly; SA/Agent Bricks cannot. |
 | **UC governance** over the tool | Grants, ownership, and auditing on the tool like any other catalog object. |
 
 **Auth for the connection:** Databricks does **not** support Dynamic Client Registration for custom
