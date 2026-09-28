@@ -97,6 +97,14 @@
   .box .s{font-family:var(--mono);font-size:11px;color:var(--ink-soft);margin-top:2px}
   .box.hero{border-color:var(--accent);border-width:1.5px}
   .box.llm{border-color:var(--steel)}
+  /* LLM layer with a UC Skills sidecar — 3-col grid keeps the LLM centered on the spine */
+  .llmband{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;width:100%}
+  .llmband > .box.llm{grid-column:2}
+  .skillside{grid-column:1;justify-self:end;display:flex;align-items:center}
+  .box.skill{border-color:var(--accent);border-style:dashed;background:var(--accent-soft);max-width:170px}
+  .harrow{flex:0 0 auto;width:26px;height:2px;background:var(--accent);margin:0 3px;position:relative}
+  .harrow::after{content:"";position:absolute;right:-1px;top:-4px;
+    border-top:5px solid transparent;border-bottom:5px solid transparent;border-left:7px solid var(--accent)}
   .row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;width:100%}
   .tool{flex:1 1 180px;min-width:150px;background:var(--surface);border:1px solid var(--line);
     border-radius:10px;padding:10px 12px;box-shadow:var(--shadow)}
@@ -115,9 +123,10 @@
   .signal.warn{border-left-color:var(--warn)} .signal.crit{border-left-color:var(--crit)}
   .signal.ok{border-left-color:var(--good)} .signal.steel{border-left-color:var(--steel)}
   ul.clean{margin:16px 0 0;padding:0;list-style:none;display:grid;gap:10px}
-  ul.clean li{display:flex;gap:11px;font-size:14.5px}
-  ul.clean li::before{content:"";flex:0 0 auto;width:7px;height:7px;border-radius:2px;
-    background:var(--accent);margin-top:8px}
+  ul.clean li{position:relative;padding-left:18px;font-size:14.5px}
+  ul.clean li::before{content:"";position:absolute;left:0;top:8px;width:7px;height:7px;
+    border-radius:2px;background:var(--accent)}
+  ul.clean li code{white-space:normal;overflow-wrap:anywhere}
   /* nav */
   .nav{flex:0 0 auto;display:flex;align-items:center;gap:14px;
     padding:10px 18px;padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));
@@ -137,7 +146,14 @@
     padding:0;cursor:pointer}
   .dot.on{background:var(--accent);transform:scale(1.25)}
   @media (max-width:560px){.g2,.g4,.signals{grid-template-columns:1fr}
-    .dots{display:none}}
+    .dots{display:none}
+    .llmband{grid-template-columns:1fr}
+    .llmband > .box.llm{grid-column:1}
+    .skillside{grid-column:1;justify-self:center;flex-direction:column}
+    .harrow{width:2px;height:16px;margin:3px 0}
+    .harrow::after{right:auto;left:-4px;top:auto;bottom:-1px;
+      border-top:7px solid var(--accent);border-left:5px solid transparent;
+      border-right:5px solid transparent;border-bottom:none}}
   /* authorization flow */
   .idpill{font-family:var(--mono);font-size:10.5px;padding:2px 8px;border-radius:999px;
     background:var(--steel-soft);color:var(--steel);white-space:nowrap}
@@ -175,7 +191,7 @@
           <span class="chip on">OpenAI Agents SDK</span>
           <span class="chip on">MLflow agent_server</span>
           <span class="chip">claude-sonnet-4-5</span>
-          <span class="chip">4 tools · 3 MCP servers</span>
+          <span class="chip">4 tools + UC Skills</span>
           <span class="chip">Lakebase memory</span>
         </div>
         <p class="mono muted" style="margin-top:26px;font-size:12px">
@@ -219,8 +235,15 @@
             <div class="conn"></div>
           </div>
           <div class="layer">
-            <div class="box llm"><div class="t">LLM · databricks-claude-sonnet-4-5</div>
-              <div class="s">plans &amp; calls tools (direct Foundation Model serving)</div></div>
+            <div class="llmband">
+              <div class="skillside">
+                <div class="box skill"><div class="t">UC Skills</div>
+                  <div class="s">governed guidance · load_skill</div></div>
+                <div class="harrow"></div>
+              </div>
+              <div class="box llm"><div class="t">LLM · databricks-claude-sonnet-4-5</div>
+                <div class="s">plans &amp; calls tools · direct Foundation Model serving</div></div>
+            </div>
             <div class="conn"></div>
           </div>
           <div class="layer">
@@ -284,7 +307,7 @@
       <div class="wrap">
         <p class="eyebrow">Governed guidance · Beta</p>
         <h2>Skills — loaded live from Unity Catalog</h2>
-        <p class="lede">A skill is a loadable <strong>instruction sheet</strong> (<code>SKILL.md</code>), not a tool that does work — the model <code>load_skill</code>s it, then follows its approach using the four tools above.</p>
+        <p class="lede">A skill is a loadable <strong>instruction sheet</strong> (<code>SKILL.md</code>), not a tool that does work — the model <code>load_skill</code>s it, then follows its approach using the four tools above. That load <strong>is itself a tool call</strong> (you'll see <code>load_skill</code> in the trace) — but what comes back is guidance, not an action.</p>
         <ul class="clean">
           <li><strong>Three playbooks as securables</strong> — <code>catalog.schema.skill</code> under the schema's <strong>Skills</strong> tab: oil-market-analyst, procurement-advisor, inventory-monitor.</li>
           <li><strong>Loaded live</strong> over the managed skills MCP (<code>/ai-gateway/skills/…</code>), filtered to read tools (<code>list_skills</code>, <code>load_skill</code>, <code>get_skill_files</code>) — the agent reads skills but can't create or delete them.</li>
@@ -353,6 +376,7 @@
                   <li><span>LLM · Foundation Model serving</span><b>CAN QUERY</b></li>
                   <li><span>UC Functions MCP</span><b>EXECUTE</b></li>
                   <li><span>AI Search MCP</span><b>read</b></li>
+                  <li><span>UC Skills MCP</span><b>READ_VOLUME</b></li>
                   <li><span>Lakebase · session memory</span><b>Postgres grants</b></li>
                 </ul>
               </div>
