@@ -4,7 +4,7 @@ bundle:
 resources:
   apps:
     agent_openai_advanced:
-      name: "mfg-procurement-agent"
+      name: "agent-mfg-procurement"
       description: "Manufacturing procurement agent — OpenAI Agents SDK with short-term
         memory, EIA/pricing/AI-Search tools, deployed on Databricks Apps"
       source_code_path: ./
@@ -26,7 +26,7 @@ resources:
           - name: LAKEBASE_AUTOSCALING_ENDPOINT
             value_from: "postgres"
           - name: LAKEBASE_AGENT_MEMORY_SCHEMA
-            value: "agent_openai_memory"
+            value: "agent_mfg_memory"
           - name: LOG_LEVEL
             value: "INFO"
           # MLflow OpenTelemetry dual export: traces go to BOTH the Databricks
@@ -89,4 +89,4 @@ targets:
     resources:
       apps:
         agent_openai_advanced:
-          name: mfg-procurement-agent
+          name: agent-mfg-procurement

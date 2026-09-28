@@ -36,7 +36,7 @@ api = w.api_client
 SCHEMA_FQN = f"{CATALOG}.{SCHEMA}"
 SKILLS_API = "/api/2.1/unity-catalog/skills"
 FILES_API = "/api/2.0/fs/files"
-AGENT_APP = "mfg-procurement-agent"  # its SP gets READ_VOLUME so the deployed agent can load skills
+AGENT_APP = "agent-mfg-procurement"  # its SP gets READ_VOLUME so the deployed agent can load skills
 SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
 # Skill leaf: lowercase alphanumerics + inner hyphens, up to 64 chars (per docs).
 LEAF_RE = re.compile(r"^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$")

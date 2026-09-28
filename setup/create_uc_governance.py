@@ -42,7 +42,7 @@ APPS = {
     "mcp-jywu-eia-oil": ("eia_conn", "eia_oil"),
     "mcp-jywu-pricing": ("pricing_conn", "pricing"),
 }
-AGENT_APP = "mfg-procurement-agent"
+AGENT_APP = "agent-mfg-procurement"
 
 # Final, MCP-safe SQL function: parameter is function-qualified inside the subqueries
 # (get_material_status.material) with table aliases, so it resolves under the named-arg
